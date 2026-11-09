@@ -1,0 +1,28 @@
+name: Bug report
+description: Report something that does not work as expected.
+title: "[Bug] "
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include relevant screenshots or logs after removing secrets.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, engine version, and commit or build, if known.

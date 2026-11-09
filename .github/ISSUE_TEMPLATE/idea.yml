@@ -1,0 +1,23 @@
+name: Game idea
+description: Pitch a concept or mechanic for discussion.
+title: "[Idea] "
+body:
+  - type: textarea
+    id: pitch
+    attributes:
+      label: Short pitch
+      description: What is the idea, and why could it be fun?
+    validations:
+      required: true
+  - type: textarea
+    id: loop
+    attributes:
+      label: Core player loop
+      description: What does the player repeatedly do?
+    validations:
+      required: true
+  - type: textarea
+    id: prototype
+    attributes:
+      label: Smallest useful prototype
+      description: How could we test this quickly with placeholder assets?

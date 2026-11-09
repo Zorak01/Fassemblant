@@ -1,0 +1,26 @@
+name: Feature or task
+description: Propose a focused improvement or development task.
+title: "[Task] "
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should the player or team be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope
+      description: Describe the work and any boundaries.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will we know this is done?
+      placeholder: "- [ ] A concrete, verifiable result"
+    validations:
+      required: true

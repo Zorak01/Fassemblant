@@ -1,0 +1,23 @@
+# Local OS and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Root-level generated exports and temporary work
+/build/
+/builds/
+/dist/
+/tmp/
+/temp/
+
+# Add engine-specific rules after selecting an engine.
