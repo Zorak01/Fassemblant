@@ -1,6 +1,6 @@
 # Project brief
 
-Status: discovery. Nothing below implies an engine or genre decision.
+Status: discovery. Engine: Unreal Engine. Genre and scope are still open.
 
 ## Questions to answer together
 
@@ -8,7 +8,6 @@ Status: discovery. Nothing below implies an engine or genre decision.
 - What is the smallest prototype that can test that idea?
 - Who is the intended player, and what is the initial platform?
 - Is the first prototype single-player or multiplayer?
-- Which engine fits the team's skills and prototype needs?
 - How much time can each person realistically contribute?
 
 ## Prototype scope

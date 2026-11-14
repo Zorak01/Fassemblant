@@ -28,6 +28,8 @@ Open a pull request against `main`. Use `fix/`, `docs/`, or `art/` branches when
 
 These are team conventions; branch protection is not configured by these files.
 
-## Large files
+## Unreal assets
 
-Before committing large binary assets, agree on storage and Git LFS patterns. Git LFS is not configured yet. Do not commit build exports or downloaded asset packs wholesale.
+Use Git LFS for the formats listed in `.gitattributes`. Lock `.uasset` and `.umap` files before editing, then unlock after pushing. See [Git in Unreal](docs/unreal-git.md) for commands.
+
+Do not commit generated caches, packaged builds, or whole downloaded asset packs. Check asset licenses before adding source files or plugins.
