@@ -1,38 +1,28 @@
 # Fassemblant
 
-A team project exploring a game idea. The genre, engine, and scope are still open.
+An Unreal Engine game project. Game design is still being decided.
 
-## Start here
+[Git and Unreal setup](docs/unreal-git.md) · [Project brief](docs/project-brief.md) · [Roadmap](docs/roadmap.md)
 
-1. Read the [project brief](docs/project-brief.md).
-2. Add ideas or pick a task in [Issues](https://github.com/Zorak01/Fassemblant/issues).
-3. Follow the [contribution guide](CONTRIBUTING.md) and open a pull request.
+## Setup
 
-## First milestone: a playable prototype
+```sh
+git clone https://github.com/Zorak01/Fassemblant.git
+cd Fassemblant
+git lfs install --local
+git lfs pull
+```
 
-Agree on one core mechanic, choose an engine, and build a small prototype that tests whether the mechanic is fun. Use placeholder art and keep the scope small.
+Open `game/shooter/shooter.uproject` with **Unreal Engine 5.8**. The current project is Blueprint-only. No content assets or maps have been saved yet.
 
-See the [roadmap](docs/roadmap.md) for the initial plan and [decisions](docs/decisions.md) for recorded choices.
+Maps and Unreal assets use Git LFS with file locking. Generated caches and build output are ignored. Commit project settings, source, content, and plugin descriptors.
 
-## Repository layout
+## Folders
 
-| Folder | Purpose |
+| Folder | Contents |
 | --- | --- |
-| `game/` | The engine project and game source once an engine is selected |
-| `assets/` | Original art, audio, and asset provenance |
-| `docs/` | Design notes, planning, and team decisions |
-| `.github/` | Issue templates and pull request guidance |
+| `game/` | Unreal project |
+| `assets/` | Source art and audio |
+| `docs/` | Setup, design, and project decisions |
 
-Build and run instructions will be added with the first engine project. There is no playable build yet.
-
-## Working together
-
-- Keep tasks small and describe what done looks like.
-- Use a branch and pull request for changes to `main`.
-- Ask for a teammate's review when possible.
-- Include screenshots or a short clip for visual changes.
-- Track asset sources and permissions before adding them.
-
-## License
-
-No project license has been selected. A public repository does not grant permission to reuse its code or assets. Decide on licensing together before distributing the game.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch and asset workflow.

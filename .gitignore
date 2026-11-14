@@ -1,23 +1,40 @@
-# Local OS and editor files
+# Local editor and OS files
 .DS_Store
 Thumbs.db
 Desktop.ini
 .idea/
 .vs/
+.vscode/
 *.swp
 *.swo
 *~
 
-# Secrets and local configuration
+# Secrets
 .env
 .env.*
 !.env.example
 
-# Root-level generated exports and temporary work
+# Unreal generated files, including plugin output
+**/Binaries/
+**/Intermediate/
+**/Saved/
+**/DerivedDataCache/
+**/.vs/
+**/Build/**/FileOpenOrder/
+*.sln
+*.slnx
+*.suo
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+*.xcodeproj/
+*.xcworkspace/
+*.code-workspace
+
+# Build exports and temporary work
 /build/
 /builds/
 /dist/
 /tmp/
 /temp/
-
-# Add engine-specific rules after selecting an engine.
