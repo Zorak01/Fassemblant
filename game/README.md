@@ -2,7 +2,7 @@
 
 Open `shooter/shooter.uproject` with Unreal Engine 5.8.
 
-This is a blank Blueprint project. No content assets or maps have been saved yet.
+The project includes a C++ first-person controller with Blueprint tuning and a firing-range map. See [demo setup and controls](shooter/demo/README.md).
 
 `Config` and the project descriptor are tracked. `Content` assets will use Git LFS when added. Generated cache, intermediate, and saved files are ignored.
 
