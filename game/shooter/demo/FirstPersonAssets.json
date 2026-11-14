@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "assets": [
+    "/Game/demo/Audio/S_ConcreteLand",
+    "/Game/demo/Audio/S_ConcreteStep",
+    "/Game/demo/Audio/S_KestrelFire",
+    "/Game/demo/Audio/S_KestrelReload",
+    "/Game/demo/Character/BP_DemoCharacter",
+    "/Game/demo/Character/Mannequin/SK_DemoArms",
+    "/Game/demo/Character/Mannequin/SK_DemoSkeleton",
+    "/Game/demo/Materials/M_ArmsCeramic",
+    "/Game/demo/Materials/M_RifleRubber",
+    "/Game/demo/Weapons/BP_DemoRifle",
+    "/Game/demo/Weapons/DA_Kestrel",
+    "/Game/demo/Weapons/Meshes/SM_KestrelBarrel",
+    "/Game/demo/Weapons/Meshes/SM_KestrelBeam",
+    "/Game/demo/Weapons/Meshes/SM_KestrelBolt",
+    "/Game/demo/Weapons/Meshes/SM_KestrelBrake",
+    "/Game/demo/Weapons/Meshes/SM_KestrelGrip",
+    "/Game/demo/Weapons/Meshes/SM_KestrelHandguard",
+    "/Game/demo/Weapons/Meshes/SM_KestrelMagPad",
+    "/Game/demo/Weapons/Meshes/SM_KestrelMagazine",
+    "/Game/demo/Weapons/Meshes/SM_KestrelMuzzleFlash",
+    "/Game/demo/Weapons/Meshes/SM_KestrelOptic",
+    "/Game/demo/Weapons/Meshes/SM_KestrelPad",
+    "/Game/demo/Weapons/Meshes/SM_KestrelReceiver",
+    "/Game/demo/Weapons/Meshes/SM_KestrelReticle",
+    "/Game/demo/Weapons/Meshes/SM_KestrelScrew",
+    "/Game/demo/Weapons/Meshes/SM_KestrelStock"
+  ]
+}

@@ -9,6 +9,8 @@
 #include "Tests/AutomationCommon.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "demo/Game/DemoUserSettings.h"
 
 DEFINE_LATENT_AUTOMATION_COMMAND_THREE_PARAMETER(FDemoVerifyReload, FAutomationTestBase*, Test, UWorld*, World, ADemoWeapon*, Weapon);
 bool FDemoVerifyReload::Update()
@@ -91,13 +93,41 @@ bool FDemoControllerFeelTest::RunTest(const FString& Parameters)
 {
     UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
     auto* Character = World->SpawnActor<ADemoCharacter>();
-    Character->Look(FInputActionValue(FVector2D(10, -10)));
-    TestTrue(TEXT("Mouse right produces positive yaw"), Character->PendingLook.X > 0);
-    TestTrue(TEXT("Mouse up produces negative pitch (look up)"), Character->PendingLook.Y < 0);
-    Character->PendingLook = FVector2D::ZeroVector;
-    Character->bInvertMouseY = true;
-    Character->Look(FInputActionValue(FVector2D(10, -10)));
-    TestTrue(TEXT("Optional invert Y reverses only pitch"), Character->PendingLook.Y > 0 && Character->PendingLook.X > 0);
+    auto* PC = World->SpawnActor<APlayerController>();
+    PC->SetAsLocalPlayerController();
+    PC->Possess(Character);
+    auto* Settings = UDemoUserSettings::Get();
+    const float OldSensitivity = Settings ? Settings->MouseSensitivity : 0.1f;
+    const float OldADS = Settings ? Settings->ADSSensitivityMultiplier : 0.75f;
+    const bool OldInvert = Settings && Settings->bInvertMouseY;
+    if (Settings) { Settings->MouseSensitivity = 0.1f; Settings->ADSSensitivityMultiplier = 0.75f; Settings->bInvertMouseY = false; }
+    PC->RotationInput = FRotator::ZeroRotator;
+    Character->Look(FInputActionValue(FVector2D(10, 10)));
+    TestTrue(TEXT("Mouse is applied immediately at configured gain"), FMath::IsNearlyEqual(PC->RotationInput.Yaw, 1.0, 0.00001));
+    TestTrue(TEXT("Mouse up produces positive world pitch"), FMath::IsNearlyEqual(PC->RotationInput.Pitch, 1.0, 0.00001));
+    Character->AimAlpha = 1.f;
+    PC->RotationInput = FRotator::ZeroRotator;
+    Character->Look(FInputActionValue(FVector2D(10, 10)));
+    TestTrue(TEXT("ADS uses only the explicit ADS multiplier"), FMath::IsNearlyEqual(PC->RotationInput.Yaw, 0.75, 0.00001));
+    if (Settings)
+    {
+        Settings->bInvertMouseY = true;
+        PC->RotationInput = FRotator::ZeroRotator;
+        Character->Look(FInputActionValue(FVector2D(10, 10)));
+        TestTrue(TEXT("Optional inversion reverses only pitch"), PC->RotationInput.Pitch < 0 && PC->RotationInput.Yaw > 0);
+        Settings->MouseSensitivity = OldSensitivity; Settings->ADSSensitivityMultiplier = OldADS; Settings->bInvertMouseY = OldInvert;
+    }
+    PC->SetControlRotation(FRotator::ZeroRotator);
+    Character->ApplyShotRecoil(FVector2D(0.1, 0.6));
+    TestTrue(TEXT("Recoil points the aim vector UP in world space"), PC->GetControlRotation().Vector().Z > 0);
+    const double RaisedPitch = PC->GetControlRotation().Pitch;
+    Character->RecoverAimRecoil(0.1f);
+    TestEqual(TEXT("Recovery does not fight a firing burst"), PC->GetControlRotation().Pitch, RaisedPitch);
+    Character->LastShotTime = -100;
+    Character->RecoverAimRecoil(0.1f);
+    TestTrue(TEXT("Recovery reduces upward kick after the pause"), PC->GetControlRotation().Pitch < RaisedPitch && PC->GetControlRotation().Pitch > 0);
+    Character->ApplyLookInput(FVector2D(0, -5));
+    TestTrue(TEXT("Manual downward compensation consumes recovery debt"), FMath::IsNearlyZero(Character->AimRecoilDebt.Y));
     auto* Movement = Character->GetCharacterMovement();
     TestTrue(TEXT("Crouching supported"), Movement->GetNavAgentPropertiesRef().bCanCrouch);
     Movement->SetMovementMode(MOVE_Walking);

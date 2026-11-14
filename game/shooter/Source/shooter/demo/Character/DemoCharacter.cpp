@@ -1,5 +1,8 @@
 #include "demo/Character/DemoCharacter.h"
 #include "demo/Weapons/DemoWeapon.h"
+#include "demo/Game/DemoUserSettings.h"
+#include "demo/Character/DemoMotionComponent.h"
+#include "demo/Character/DemoArmsAnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -10,6 +13,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
+#include "UObject/ConstructorHelpers.h"
 
 ADemoCharacter::ADemoCharacter()
 {
@@ -20,28 +24,37 @@ ADemoCharacter::ADemoCharacter()
     Camera->SetRelativeLocation(FVector(0, 0, 70));
     Camera->bUsePawnControlRotation = true;
     Camera->FieldOfView = HipFOV;
+    Camera->SetEnableFirstPersonFieldOfView(true);
+    Camera->SetEnableFirstPersonScale(true);
+    Camera->SetFirstPersonFieldOfView(90.f);
+    Camera->SetFirstPersonScale(0.3f);
+    Motion = CreateDefaultSubobject<UDemoMotionComponent>(TEXT("Motion"));
     FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
     FirstPersonArms->SetupAttachment(Camera);
     FirstPersonArms->SetOnlyOwnerSee(true);
     FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     FirstPersonArms->CastShadow = false;
+    FirstPersonArms->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
+    FirstPersonArms->SetRelativeLocationAndRotation(FVector(2, 0, -154), FRotator(0, -90, 0));
+    FirstPersonArms->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+    FirstPersonArms->bEnableUpdateRateOptimizations = false;
     GetMesh()->SetOwnerNoSee(true);
     bUseControllerRotationYaw = true;
     auto* Movement = GetCharacterMovement();
     Movement->MaxWalkSpeed = WalkSpeed;
-    Movement->MaxAcceleration = 1550;
-    Movement->BrakingDecelerationWalking = 1450;
-    Movement->GroundFriction = 4.5f;
+    Movement->MaxAcceleration = 1850;
+    Movement->BrakingDecelerationWalking = 2050;
+    Movement->GroundFriction = 5.5f;
     Movement->bUseSeparateBrakingFriction = true;
     Movement->BrakingFriction = 3.f;
     Movement->BrakingFrictionFactor = 1.f;
     Movement->GetNavAgentPropertiesRef().bCanCrouch = true;
     Movement->SetCrouchedHalfHeight(52.f);
     Movement->MaxWalkSpeedCrouched = CrouchSpeed;
-    Movement->JumpZVelocity = 560;
-    Movement->GravityScale = 1.65f;
-    Movement->AirControl = 0.3f;
-    JumpMaxHoldTime = 0.16f;
+    Movement->JumpZVelocity = 530;
+    Movement->GravityScale = 2.15f;
+    Movement->AirControl = 0.32f;
+    JumpMaxHoldTime = 0.08f;
     WeaponClass = ADemoWeapon::StaticClass();
 }
 
@@ -58,9 +71,14 @@ void ADemoCharacter::BeginPlay()
         if (Weapon)
         {
             Weapon->AttachToComponent(Camera, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-            Weapon->SetActorRelativeLocation(FVector(36, 16, -18));
+            WeaponPoseLocation = Weapon->GetHipPosition();
+            Weapon->SetActorRelativeLocation(WeaponPoseLocation);
+            PrimaryActorTick.AddPrerequisite(Weapon, Weapon->PrimaryActorTick);
         }
     }
+    if (ArmsMesh) FirstPersonArms->SetSkeletalMesh(ArmsMesh);
+    FirstPersonArms->SetAnimInstanceClass(UDemoArmsAnimInstance::StaticClass());
+    FirstPersonArms->AddTickPrerequisiteActor(this);
     if (auto* PC = Cast<APlayerController>(Controller))
     {
         PC->SetInputMode(FInputModeGameOnly());
@@ -175,21 +193,31 @@ void ADemoCharacter::MoveStopped() { MoveInput = FVector2D::ZeroVector; }
 void ADemoCharacter::Look(const FInputActionValue& Value)
 {
     const FVector2D Delta = Value.Get<FVector2D>();
-    // Mouse input is already a per-frame delta. Do not multiply it by frame time.
-    const float Sensitivity = MouseSensitivity * FMath::Lerp(1.f, ScopeFOV / HipFOV, AimAlpha);
-    // Unreal's MouseY already follows pitch convention. Negating it again inverted look.
-    PendingLook += FVector2D(Delta.X, Delta.Y * (bInvertMouseY ? -1.f : 1.f)) * Sensitivity;
+    const auto* Settings = UDemoUserSettings::Get();
+    const float Sensitivity = Settings ? Settings->MouseSensitivity : 0.10f;
+    const float ADSMultiplier = Settings ? Settings->ADSSensitivityMultiplier : 0.22f;
+    const bool bInvert = Settings && Settings->bInvertMouseY;
+    // Per-count input goes straight into this frame's controller rotation. No dt,
+    // acceleration curve, smoothing queue, or hidden FOV sensitivity multiplier.
+    ApplyLookInput(FVector2D(Delta.X, Delta.Y * (bInvert ? -1.f : 1.f)) * Sensitivity * FMath::Lerp(1.f, ADSMultiplier, AimAlpha));
     LookImpulse = Delta.GetClampedToMaxSize(20.f);
 }
 void ADemoCharacter::GamepadLook(const FInputActionValue& Value)
 {
     const FVector2D Delta = Value.Get<FVector2D>();
     const float Scale = 150.f * GetWorld()->GetDeltaSeconds() * FMath::Lerp(1.f, 0.4f, AimAlpha);
-    // A stick's positive Y is up; it needs the opposite pitch sign from MouseY.
-    PendingLook += FVector2D(Delta.X, -Delta.Y) * Scale;
+    // Positive stick Y and positive world pitch both look upward.
+    ApplyLookInput(FVector2D(Delta.X, Delta.Y) * Scale);
     LookImpulse = Delta * 4.f;
 }
-void ADemoCharacter::JumpPressed() { UnCrouch(); bJumpHeld = true; JumpPressedTime = GetWorld()->GetTimeSeconds(); }
+void ADemoCharacter::JumpPressed()
+{
+    UnCrouch(); bJumpHeld = true; JumpPressedTime = GetWorld()->GetTimeSeconds();
+    if (GetCharacterMovement()->IsMovingOnGround() && !bIsCrouched)
+    {
+        Jump(); bJumpConsumed = true; JumpPressedTime = -100;
+    }
+}
 void ADemoCharacter::JumpReleased() { bJumpHeld = false; StopJumping(); }
 void ADemoCharacter::AimPressed() { bWantsAim = true; bWantsSprint = false; }
 void ADemoCharacter::AimReleased() { bWantsAim = false; }
@@ -201,18 +229,45 @@ void ADemoCharacter::ReloadPressed() { if (Weapon && Weapon->Reload()) bWantsAim
 void ADemoCharacter::CrouchPressed() { bWantsSprint = false; Crouch(); }
 void ADemoCharacter::CrouchReleased() { UnCrouch(); }
 bool ADemoCharacter::CanFire() const { return !bSprinting && SprintAlpha < 0.15f; }
-void ADemoCharacter::ApplyShotRecoil() { RecoilPitch += FMath::Lerp(0.6f, 0.22f, AimAlpha); RecoilYaw += FMath::FRandRange(-0.1f, 0.1f); }
+void ADemoCharacter::ApplyLookInput(FVector2D Delta)
+{
+    // Counter-steering pays down recoverable kick. Recovery never drags the view
+    // past the position the player deliberately compensated to.
+    for (int32 Axis = 0; Axis < 2; ++Axis)
+        if (Delta[Axis] * AimRecoilDebt[Axis] < 0.f)
+            AimRecoilDebt[Axis] += FMath::Sign(Delta[Axis]) * FMath::Min(FMath::Abs(Delta[Axis]), FMath::Abs(AimRecoilDebt[Axis]));
+    AddControllerYawInput(Delta.X);
+    AddControllerPitchInput(Delta.Y);
+}
+void ADemoCharacter::ApplyShotRecoil(FVector2D Kick)
+{
+    if (!Controller) return;
+    FRotator Rotation = Controller->GetControlRotation();
+    const float OldPitch = FRotator::NormalizeAxis(Rotation.Pitch);
+    // Unreal world pitch is POSITIVE upwards; legacy input scales are disabled.
+    Rotation.Pitch = FMath::Clamp(OldPitch + Kick.Y, -85.f, 85.f);
+    Rotation.Yaw += Kick.X;
+    Controller->SetControlRotation(Rotation);
+    AimRecoilDebt += FVector2D(Kick.X, Rotation.Pitch - OldPitch);
+    LastShotTime = GetWorld()->GetTimeSeconds();
+}
+void ADemoCharacter::RecoverAimRecoil(float Dt)
+{
+    if (!Controller || GetWorld()->GetTimeSeconds() - LastShotTime < RecoilRecoveryDelay) return;
+    const FVector2D Recovery = AimRecoilDebt * (1.f - FMath::Exp(-RecoilRecoverySpeed * Dt));
+    FRotator Rotation = Controller->GetControlRotation();
+    Rotation.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch) - Recovery.Y, -85.f, 85.f);
+    Rotation.Yaw -= Recovery.X;
+    Controller->SetControlRotation(Rotation);
+    AimRecoilDebt -= Recovery;
+}
 
 void ADemoCharacter::Tick(float Dt)
 {
     Super::Tick(Dt);
     if (!IsLocallyControlled()) return;
     const auto Blend = [Dt](float Response) { return 1.f - FMath::Exp(-Response * Dt); };
-    const FVector2D LookStep = PendingLook * Blend(LookResponse);
-    AddControllerYawInput(LookStep.X);
-    AddControllerPitchInput(LookStep.Y);
-    PendingLook -= LookStep;
-    SmoothedSway = FMath::Lerp(SmoothedSway, LookImpulse, Blend(9.f));
+    SmoothedSway = FMath::Lerp(SmoothedSway, LookImpulse, Blend(22.f));
     auto* Movement = GetCharacterMovement();
     const double Now = GetWorld()->GetTimeSeconds();
     const bool bGrounded = Movement->IsMovingOnGround();
@@ -228,49 +283,46 @@ void ADemoCharacter::Tick(float Dt)
     const bool bReloading = Weapon && Weapon->IsReloading();
     bSprinting = bWantsSprint && MoveInput.X > 0.1f && bGrounded && !bIsCrouched && !Movement->bWantsToCrouch && !bReloading && !bWantsAim;
     const float AimTarget = bWantsAim && !bReloading && !bSprinting ? 1.f : 0.f;
-    AimProgress = FMath::FInterpConstantTo(AimProgress, AimTarget, Dt, 1.f / FMath::Max(0.1f, AimTransitionSeconds));
+    AimProgress = FMath::FInterpConstantTo(AimProgress, AimTarget, Dt, 1.f / FMath::Max(0.08f, AimTransitionSeconds));
     AimAlpha = FMath::SmoothStep(0.f, 1.f, AimProgress);
     SprintAlpha = FMath::Lerp(SprintAlpha, bSprinting ? 1.f : 0.f, Blend(6.f));
     Movement->MaxWalkSpeed = FMath::Lerp(FMath::Lerp(WalkSpeed, SprintSpeed, SprintAlpha), AimSpeed, AimAlpha);
     Movement->MaxWalkSpeedCrouched = FMath::Lerp(CrouchSpeed, CrouchSpeed * 0.72f, AimAlpha);
     Camera->SetFieldOfView(FMath::Lerp(HipFOV + 7.f * SprintAlpha, ScopeFOV, AimAlpha));
-    // Exponential impulse consumption preserves total recoil across frame rates.
-    const float RecoilStep = Blend(14.f);
-    AddControllerPitchInput(-RecoilPitch * RecoilStep);
-    AddControllerYawInput(RecoilYaw * RecoilStep);
-    RecoilPitch *= 1.f - RecoilStep;
-    RecoilYaw *= 1.f - RecoilStep;
-    const float Speed = GetVelocity().Size2D();
-    const float MotionTarget = FMath::Clamp(Speed / WalkSpeed, 0.f, 1.6f) * (bGrounded ? 1.f : 0.f) * MotionScale * (bIsCrouched ? 0.45f : 1.f);
-    SmoothedMotion = FMath::Lerp(SmoothedMotion, MotionTarget, Blend(7.f));
-    const float Motion = SmoothedMotion;
-    BobPhase += Dt * FMath::Lerp(10.f, 15.f, SprintAlpha) * FMath::Clamp(Speed / WalkSpeed, 0.f, 1.3f);
-    LandingOffset = FMath::Lerp(LandingOffset, LandingTarget, Blend(16.f));
-    LandingTarget = FMath::Lerp(LandingTarget, 0.f, Blend(8.f));
+    RecoverAimRecoil(Dt);
+    Motion->Intensity = MotionScale;
+    Motion->Update(Dt, GetVelocity(), GetControlRotation(), bGrounded, SprintAlpha, AimAlpha, bIsCrouched);
     CurrentEyeHeight = FMath::Lerp(CurrentEyeHeight, bIsCrouched ? 42.f : 70.f, Blend(10.f));
-    const float Bob = FMath::Sin(2.f * BobPhase) * 0.35f * Motion * (1.f - AimAlpha * 0.98f);
-    Camera->SetRelativeLocation(FVector(0, 0, CurrentEyeHeight + LandingOffset * (1.f - AimAlpha * 0.8f) + Bob));
+    Camera->SetRelativeLocation(FVector(0, 0, CurrentEyeHeight) + Motion->CameraOffset);
+    Camera->ClearAdditiveOffset();
+    Camera->AddAdditiveOffset(FTransform(Motion->CameraRotation), 0.f);
+    Camera->SetFirstPersonFieldOfView(FMath::Lerp(90.f, ScopeFOV, AimAlpha));
     if (Weapon)
     {
         const float ReloadPhase = Weapon->GetReloadProgress();
         const float ReloadMotion = Weapon->IsReloading() ? FMath::Sin(PI * ReloadPhase) : 0.f;
-        FVector Position = FMath::Lerp(FVector(36, 16, -18), FVector(30, 0, -8), AimAlpha);
-        Position += FVector(-Weapon->GetRecoil() * 2.2f, FMath::Sin(BobPhase) * Motion, FMath::Cos(BobPhase * 2.f) * 0.65f * Motion) * (1.f - AimAlpha * 0.85f);
-        Position += FVector(-6.f * SprintAlpha, 3.f * SprintAlpha, -8.f * SprintAlpha - 10.f * ReloadMotion);
+        const FTransform AimPose = Weapon->GetAimPose();
+        FVector Position = FMath::Lerp(Weapon->GetHipPosition(), AimPose.GetLocation(), AimAlpha);
+        const float Idle = (1.f - AimAlpha) * (1.f - SprintAlpha) * MotionScale;
+        Position += Motion->WeaponOffset + FVector(0, FMath::Sin(Now * 1.7f) * 0.12f, FMath::Sin(Now * 2.1f) * 0.10f) * Idle;
+        Position += FVector(-6.f * SprintAlpha - 2.f * ReloadMotion, 3.f * SprintAlpha - 6.f * ReloadMotion, -8.f * SprintAlpha + 9.f * ReloadMotion);
         const float SwayScale = MotionScale * (1.f - AimAlpha * 0.98f);
-        const FRotator Rotation(-7.f * SprintAlpha - 16.f * ReloadMotion + Weapon->GetRecoil() * 1.2f + SmoothedSway.Y * 0.08f * SwayScale,
-            -10.f * SprintAlpha - SmoothedSway.X * 0.1f * SwayScale, -18.f * ReloadMotion - MoveInput.Y * 1.2f * SwayScale);
+        const FRotator Rotation = AimPose.Rotator() * AimAlpha + Motion->WeaponRotation + FRotator(-12.f * SprintAlpha + 9.f * ReloadMotion + SmoothedSway.Y * 0.035f * SwayScale,
+            -16.f * SprintAlpha - 14.f * ReloadMotion - SmoothedSway.X * 0.045f * SwayScale, -32.f * ReloadMotion - MoveInput.Y * 0.7f * SwayScale);
         auto* Root = Weapon->GetRootComponent();
-        Root->SetRelativeLocationAndRotation(FMath::Lerp(Root->GetRelativeLocation(), Position, Blend(WeaponResponse)),
-            FMath::Lerp(Root->GetRelativeRotation(), Rotation, Blend(WeaponResponse)));
-        // The magnified scope is unobstructed by the close-up first-person mesh.
-        Weapon->SetActorHiddenInGame(AimAlpha > 0.88f);
+        WeaponPoseLocation = FMath::Lerp(WeaponPoseLocation, Position, Blend(WeaponResponse));
+        WeaponPoseRotation = FMath::Lerp(WeaponPoseRotation, Rotation, Blend(WeaponResponse));
+        // Cosmetic kick is applied AFTER pose interpolation: firing never waits on
+        // weapon lag, and this offset never changes bullet direction.
+        const float VisualRecoil = FMath::Lerp(1.f, 0.14f, AimAlpha);
+        Root->SetRelativeLocationAndRotation(WeaponPoseLocation + FVector(-3.6f, 0.08f, 0.4f) * Weapon->GetRecoil() * VisualRecoil,
+            WeaponPoseRotation + FRotator(Weapon->GetRecoil() * 2.6f, 0, Weapon->GetRecoil() * 0.45f) * VisualRecoil);
     }
     LookImpulse = FMath::Lerp(LookImpulse, FVector2D::ZeroVector, Blend(12.f));
 }
 void ADemoCharacter::Landed(const FHitResult& Hit)
 {
-    LandingTarget = -FMath::Clamp(FMath::Abs(GetVelocity().Z) * 0.005f, 0.f, 5.f) * MotionScale;
+    Motion->Land(GetVelocity().Z);
     Super::Landed(Hit);
 }
 void ADemoCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)

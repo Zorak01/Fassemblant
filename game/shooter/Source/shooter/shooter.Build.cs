@@ -6,7 +6,9 @@ public class shooter : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" });
-        PrivateDependencyModuleNames.Add("RenderCore");
+        PrivateDependencyModuleNames.AddRange(new[] { "RenderCore", "AnimationCore", "AnimGraphRuntime", "Json" });
+        if (Target.bBuildEditor)
+            PrivateDependencyModuleNames.AddRange(new[] { "UnrealEd", "AssetRegistry", "MeshDescription", "StaticMeshDescription", "SkeletalMeshDescription", "AnimationCore" });
         PublicIncludePaths.Add(ModuleDirectory);
     }
 }

@@ -9,4 +9,5 @@ class SHOOTER_API ADemoGameMode : public AGameModeBase
     GENERATED_BODY()
 public:
     ADemoGameMode();
+    virtual void StartPlay() override;
 };

@@ -9,6 +9,7 @@ class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
 class ADemoWeapon;
+class UDemoMotionComponent;
 
 UCLASS(Blueprintable)
 class SHOOTER_API ADemoCharacter : public ACharacter
@@ -28,24 +29,27 @@ public:
     UFUNCTION(BlueprintPure, Category="Demo") ADemoWeapon* GetWeapon() const { return Weapon; }
     UCameraComponent* GetFirstPersonCamera() const { return Camera; }
     bool CanFire() const;
-    void ApplyShotRecoil();
+    void ApplyShotRecoil(FVector2D Kick);
+    void ApplyLookInput(FVector2D Delta);
+    void RecoverAimRecoil(float DeltaSeconds);
     void RecordElimination() { ++Eliminations; }
     int32 GetEliminations() const { return Eliminations; }
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Demo|Camera") TObjectPtr<UCameraComponent> Camera;
     /** Optional mannequin/arms mesh: set mesh, AnimBP and socket in a derived Blueprint. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Demo|Appearance") TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Demo|Camera") TObjectPtr<UDemoMotionComponent> Motion;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<USkeletalMesh> ArmsMesh;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Weapon") TSubclassOf<ADemoWeapon> WeaponClass;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Movement", meta=(ClampMin="100")) float WalkSpeed = 440.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Movement", meta=(ClampMin="100")) float SprintSpeed = 720.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Movement", meta=(ClampMin="100")) float AimSpeed = 240.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="60", ClampMax="120")) float HipFOV = 95.f;
-    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="15", ClampMax="90")) float ScopeFOV = 38.f;
-    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="0.01")) float MouseSensitivity = 0.12f;
-    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera") bool bInvertMouseY = false;
-    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="10", ClampMax="100")) float LookResponse = 32.f;
-    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="0.1", ClampMax="0.8")) float AimTransitionSeconds = 0.32f;
-    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="2", ClampMax="30")) float WeaponResponse = 10.f;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="55", ClampMax="90")) float ScopeFOV = 78.f;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="0.08", ClampMax="0.8")) float AimTransitionSeconds = 0.16f;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="2", ClampMax="40")) float WeaponResponse = 24.f;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Recoil", meta=(ClampMin="0")) float RecoilRecoveryDelay = 0.18f;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Recoil", meta=(ClampMin="1")) float RecoilRecoverySpeed = 10.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Movement", meta=(ClampMin="100")) float CrouchSpeed = 190.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="0", ClampMax="1")) float MotionScale = 1.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Movement", meta=(ClampMin="0", ClampMax="0.3")) float CoyoteSeconds = 0.1f;
@@ -54,6 +58,7 @@ protected:
     virtual void BeginPlay() override;
 private:
     friend class FDemoControllerFeelTest;
+    friend class ADemoPresentationTest;
     void Move(const FInputActionValue& Value);
     void Look(const FInputActionValue& Value);
     void GamepadLook(const FInputActionValue& Value);
@@ -84,8 +89,10 @@ private:
     UPROPERTY(VisibleInstanceOnly, Category="Demo") TObjectPtr<ADemoWeapon> Weapon;
     FVector2D MoveInput = FVector2D::ZeroVector;
     FVector2D LookImpulse = FVector2D::ZeroVector;
-    FVector2D PendingLook = FVector2D::ZeroVector;
     FVector2D SmoothedSway = FVector2D::ZeroVector;
+    FVector2D AimRecoilDebt = FVector2D::ZeroVector;
+    FVector WeaponPoseLocation = FVector(36, 16, -18);
+    FRotator WeaponPoseRotation = FRotator::ZeroRotator;
     bool bWantsAim = false;
     bool bWantsSprint = false;
     bool bSprinting = false;
@@ -94,13 +101,8 @@ private:
     float AimAlpha = 0;
     float AimProgress = 0;
     float SprintAlpha = 0;
-    float BobPhase = 0;
-    float LandingOffset = 0;
-    float LandingTarget = 0;
-    float SmoothedMotion = 0;
     float CurrentEyeHeight = 70.f;
-    float RecoilPitch = 0;
-    float RecoilYaw = 0;
+    double LastShotTime = -100;
     double LastGroundedTime = -100;
     double JumpPressedTime = -100;
     int32 Eliminations = 0;

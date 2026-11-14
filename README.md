@@ -6,6 +6,10 @@ An Unreal Engine game project. Game design is still being decided.
 
 ## Setup
 
+On Windows, double-click **`Launch.bat`** and press Enter to play, or choose
+Open editor. It detects Unreal, prepares the C++ tools, fetches missing LFS
+content and builds only when needed. See [launcher options](tools/README.md).
+
 ```sh
 git clone https://github.com/Zorak01/Fassemblant.git
 cd Fassemblant
