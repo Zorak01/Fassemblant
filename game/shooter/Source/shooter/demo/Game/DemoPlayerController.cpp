@@ -2,6 +2,17 @@
 #include "demo/Game/DemoUserSettings.h"
 #include "GameFramework/PlayerInput.h"
 #include "GameFramework/InputSettings.h"
+#include "demo/World/DemoRangeDirector.h"
+#include "Components/InputComponent.h"
+
+void ADemoPlayerController::SetupInputComponent()
+{
+    Super::SetupInputComponent();
+    InputComponent->BindKey(EKeys::E, IE_Pressed, this, &ThisClass::DemoResetRange);
+    InputComponent->BindKey(EKeys::T, IE_Pressed, this, &ThisClass::DemoTimedDrill);
+}
+void ADemoPlayerController::DemoResetRange() { if (auto* Range = ADemoRangeDirector::Find(this)) Range->ResetSession(); }
+void ADemoPlayerController::DemoTimedDrill() { if (auto* Range = ADemoRangeDirector::Find(this)) Range->StartTimedDrill(); }
 
 void ADemoPlayerController::InitInputSystem()
 {

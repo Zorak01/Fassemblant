@@ -2,6 +2,7 @@
 #include "demo/Weapons/DemoWeapon.h"
 #include "demo/Game/DemoUserSettings.h"
 #include "demo/Character/DemoMotionComponent.h"
+#include "demo/Character/DemoMovementComponent.h"
 #include "demo/Character/DemoArmsAnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -15,7 +16,8 @@
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
 
-ADemoCharacter::ADemoCharacter()
+ADemoCharacter::ADemoCharacter(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer.SetDefaultSubobjectClass<UDemoMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
     PrimaryActorTick.bCanEverTick = true;
     GetCapsuleComponent()->InitCapsuleSize(34.f, 90.f);
@@ -35,7 +37,7 @@ ADemoCharacter::ADemoCharacter()
     FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     FirstPersonArms->CastShadow = false;
     FirstPersonArms->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
-    FirstPersonArms->SetRelativeLocationAndRotation(FVector(2, 0, -154), FRotator(0, -90, 0));
+    FirstPersonArms->SetRelativeLocationAndRotation(FVector(5, 0, -158), FRotator(0, -90, 0));
     FirstPersonArms->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
     FirstPersonArms->bEnableUpdateRateOptimizations = false;
     GetMesh()->SetOwnerNoSee(true);
@@ -53,7 +55,10 @@ ADemoCharacter::ADemoCharacter()
     Movement->MaxWalkSpeedCrouched = CrouchSpeed;
     Movement->JumpZVelocity = 530;
     Movement->GravityScale = 2.15f;
-    Movement->AirControl = 0.32f;
+    Movement->AirControl = 0.45f;
+    Movement->AirControlBoostMultiplier = 1.f;
+    Movement->BrakingDecelerationFalling = 0.f;
+    Movement->FallingLateralFriction = 0.f;
     JumpMaxHoldTime = 0.08f;
     WeaponClass = ADemoWeapon::StaticClass();
 }
@@ -77,6 +82,9 @@ void ADemoCharacter::BeginPlay()
         }
     }
     if (ArmsMesh) FirstPersonArms->SetSkeletalMesh(ArmsMesh);
+    FirstPersonArms->HideBoneByName(TEXT("neck_01"), EPhysBodyOp::PBO_None);
+    FirstPersonArms->HideBoneByName(TEXT("thigh_l"), EPhysBodyOp::PBO_None);
+    FirstPersonArms->HideBoneByName(TEXT("thigh_r"), EPhysBodyOp::PBO_None);
     FirstPersonArms->SetAnimInstanceClass(UDemoArmsAnimInstance::StaticClass());
     FirstPersonArms->AddTickPrerequisiteActor(this);
     if (auto* PC = Cast<APlayerController>(Controller))
@@ -212,6 +220,7 @@ void ADemoCharacter::GamepadLook(const FInputActionValue& Value)
 }
 void ADemoCharacter::JumpPressed()
 {
+    CastChecked<UDemoMovementComponent>(GetCharacterMovement())->EndSlide(true);
     UnCrouch(); bJumpHeld = true; JumpPressedTime = GetWorld()->GetTimeSeconds();
     if (GetCharacterMovement()->IsMovingOnGround() && !bIsCrouched)
     {
@@ -221,13 +230,23 @@ void ADemoCharacter::JumpPressed()
 void ADemoCharacter::JumpReleased() { bJumpHeld = false; StopJumping(); }
 void ADemoCharacter::AimPressed() { bWantsAim = true; bWantsSprint = false; }
 void ADemoCharacter::AimReleased() { bWantsAim = false; }
-void ADemoCharacter::SprintPressed() { UnCrouch(); bWantsSprint = true; bWantsAim = false; FireReleased(); }
+void ADemoCharacter::SprintPressed() { if (!IsSliding()) UnCrouch(); bWantsSprint = true; bWantsAim = false; FireReleased(); }
 void ADemoCharacter::SprintReleased() { bWantsSprint = false; }
 void ADemoCharacter::FirePressed() { if (Weapon) Weapon->SetTrigger(true); }
 void ADemoCharacter::FireReleased() { if (Weapon) Weapon->SetTrigger(false); }
 void ADemoCharacter::ReloadPressed() { if (Weapon && Weapon->Reload()) bWantsAim = false; }
-void ADemoCharacter::CrouchPressed() { bWantsSprint = false; Crouch(); }
-void ADemoCharacter::CrouchReleased() { UnCrouch(); }
+void ADemoCharacter::CrouchPressed()
+{
+    bCrouchHeld = true;
+    auto* Movement = CastChecked<UDemoMovementComponent>(GetCharacterMovement());
+    const bool bEnteredSlide = (bSprinting || bWantsSprint) && Movement->TryStartSlide();
+    // Keep held sprint intent through a slide/airborne crouch. Releasing crouch
+    // resumes sprint without requiring another Shift press.
+    if (!bEnteredSlide && Movement->IsMovingOnGround()) bWantsSprint = false;
+    Crouch();
+}
+void ADemoCharacter::CrouchReleased() { bCrouchHeld = false; CastChecked<UDemoMovementComponent>(GetCharacterMovement())->EndSlide(); UnCrouch(); }
+bool ADemoCharacter::IsSliding() const { return CastChecked<UDemoMovementComponent>(GetCharacterMovement())->IsSliding(); }
 bool ADemoCharacter::CanFire() const { return !bSprinting && SprintAlpha < 0.15f; }
 void ADemoCharacter::ApplyLookInput(FVector2D Delta)
 {
@@ -250,6 +269,7 @@ void ADemoCharacter::ApplyShotRecoil(FVector2D Kick)
     Controller->SetControlRotation(Rotation);
     AimRecoilDebt += FVector2D(Kick.X, Rotation.Pitch - OldPitch);
     LastShotTime = GetWorld()->GetTimeSeconds();
+    Motion->Shot(Kick.X, AimAlpha);
 }
 void ADemoCharacter::RecoverAimRecoil(float Dt)
 {
@@ -271,8 +291,9 @@ void ADemoCharacter::Tick(float Dt)
     auto* Movement = GetCharacterMovement();
     const double Now = GetWorld()->GetTimeSeconds();
     const bool bGrounded = Movement->IsMovingOnGround();
+    if (!bGrounded && bCrouchHeld && GetVelocity().Z < 0) Crouch();
     if (bGrounded) { LastGroundedTime = Now; bJumpConsumed = false; }
-    if (!bJumpConsumed && Now - JumpPressedTime <= JumpBufferSeconds && Now - LastGroundedTime <= CoyoteSeconds)
+    if (!bJumpConsumed && !bIsCrouched && Now - JumpPressedTime <= JumpBufferSeconds && Now - LastGroundedTime <= CoyoteSeconds)
     {
         if (bGrounded) Jump();
         else LaunchCharacter(FVector(0, 0, Movement->JumpZVelocity), false, true);
@@ -288,11 +309,11 @@ void ADemoCharacter::Tick(float Dt)
     SprintAlpha = FMath::Lerp(SprintAlpha, bSprinting ? 1.f : 0.f, Blend(6.f));
     Movement->MaxWalkSpeed = FMath::Lerp(FMath::Lerp(WalkSpeed, SprintSpeed, SprintAlpha), AimSpeed, AimAlpha);
     Movement->MaxWalkSpeedCrouched = FMath::Lerp(CrouchSpeed, CrouchSpeed * 0.72f, AimAlpha);
-    Camera->SetFieldOfView(FMath::Lerp(HipFOV + 7.f * SprintAlpha, ScopeFOV, AimAlpha));
+    Camera->SetFieldOfView(FMath::Lerp(HipFOV + 7.f * SprintAlpha + 4.f * Motion->GetSlideAlpha(), ScopeFOV, AimAlpha));
     RecoverAimRecoil(Dt);
     Motion->Intensity = MotionScale;
-    Motion->Update(Dt, GetVelocity(), GetControlRotation(), bGrounded, SprintAlpha, AimAlpha, bIsCrouched);
-    CurrentEyeHeight = FMath::Lerp(CurrentEyeHeight, bIsCrouched ? 42.f : 70.f, Blend(10.f));
+    Motion->Update(Dt, GetVelocity(), GetControlRotation(), bGrounded, SprintAlpha, AimAlpha, bIsCrouched, IsSliding());
+    CurrentEyeHeight = FMath::Lerp(CurrentEyeHeight, bIsCrouched ? (IsSliding() ? 34.f : 42.f) : 70.f, Blend(14.f));
     Camera->SetRelativeLocation(FVector(0, 0, CurrentEyeHeight) + Motion->CameraOffset);
     Camera->ClearAdditiveOffset();
     Camera->AddAdditiveOffset(FTransform(Motion->CameraRotation), 0.f);
@@ -305,7 +326,10 @@ void ADemoCharacter::Tick(float Dt)
         FVector Position = FMath::Lerp(Weapon->GetHipPosition(), AimPose.GetLocation(), AimAlpha);
         const float Idle = (1.f - AimAlpha) * (1.f - SprintAlpha) * MotionScale;
         Position += Motion->WeaponOffset + FVector(0, FMath::Sin(Now * 1.7f) * 0.12f, FMath::Sin(Now * 2.1f) * 0.10f) * Idle;
-        Position += FVector(-6.f * SprintAlpha - 2.f * ReloadMotion, 3.f * SprintAlpha - 6.f * ReloadMotion, -8.f * SprintAlpha + 9.f * ReloadMotion);
+        // Present the magazine work in frame instead of pulling a huge receiver
+        // toward the eye while the support hand disappears below the camera.
+        Position += FVector(-6.f * SprintAlpha + 10.f * ReloadMotion, 3.f * SprintAlpha - 6.f * ReloadMotion, -8.f * SprintAlpha + 12.f * ReloadMotion);
+        Position += FVector(-2, -1, -3) * Motion->GetSlideAlpha() * (1.f - AimAlpha);
         const float SwayScale = MotionScale * (1.f - AimAlpha * 0.98f);
         const FRotator Rotation = AimPose.Rotator() * AimAlpha + Motion->WeaponRotation + FRotator(-12.f * SprintAlpha + 9.f * ReloadMotion + SmoothedSway.Y * 0.035f * SwayScale,
             -16.f * SprintAlpha - 14.f * ReloadMotion - SmoothedSway.X * 0.045f * SwayScale, -32.f * ReloadMotion - MoveInput.Y * 0.7f * SwayScale);

@@ -17,7 +17,7 @@ git lfs install --local
 git lfs pull
 ```
 
-Open `game/shooter/shooter.uproject` with **Unreal Engine 5.8**. The project now includes a C++ first-person [demo](game/shooter/demo/README.md) with Blueprint tuning and a playable firing range at `/Game/demo/Maps/DemoRange`.
+Open `game/shooter/shooter.uproject` with **Unreal Engine 5.8**. The project includes a C++ first-person [demo](game/shooter/demo/README.md) with Blueprint tuning, momentum slides and a training facility at `/Game/demo/Maps/TrainingFacility`.
 
 Maps and Unreal assets use Git LFS with file locking. Generated caches and build output are ignored. Commit project settings, source, content, and plugin descriptors.
 

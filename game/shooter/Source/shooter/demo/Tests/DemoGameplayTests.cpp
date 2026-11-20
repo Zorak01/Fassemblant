@@ -11,6 +11,8 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "demo/Game/DemoUserSettings.h"
+#include "demo/Character/DemoMovementComponent.h"
+#include "demo/World/DemoRangeDirector.h"
 
 DEFINE_LATENT_AUTOMATION_COMMAND_THREE_PARAMETER(FDemoVerifyReload, FAutomationTestBase*, Test, UWorld*, World, ADemoWeapon*, Weapon);
 bool FDemoVerifyReload::Update()
@@ -138,6 +140,51 @@ bool FDemoControllerFeelTest::RunTest(const FString& Parameters)
     Character->CrouchReleased();
     Movement->UnCrouch(false);
     TestFalse(TEXT("Releasing crouch restores standing when clear"), Character->bIsCrouched);
+    World->DestroyWorld(false);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDemoSlideTest, "Demo.Gameplay.SlideMomentum", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDemoSlideTest::RunTest(const FString& Parameters)
+{
+    const auto Settings = UWorld::InitializationValues().AllowAudioPlayback(false).CreatePhysicsScene(true).CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false);
+    UWorld* World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, true, ERHIFeatureLevel::Num, &Settings);
+    auto* Character = World->SpawnActor<ADemoCharacter>();
+    auto* Move = CastChecked<UDemoMovementComponent>(Character->GetCharacterMovement());
+    Move->SetMovementMode(MOVE_Walking);
+    Move->Velocity = FVector(200,0,0);
+    TestFalse(TEXT("Standing-speed crouch cannot manufacture a slide"), Move->TryStartSlide());
+    Move->Velocity = FVector(700,0,0);
+    TestTrue(TEXT("Sprint-speed movement enters slide"), Move->TryStartSlide());
+    const float Entry = Move->Velocity.Size2D();
+    Move->CalcVelocity(.1f, 5.5f, false, 2050.f);
+    const float Coasting = Move->Velocity.Size2D();
+    TestTrue(TEXT("Slide coasts with gradual friction loss"), Coasting < Entry && Coasting > Entry * .85f);
+    Move->EndSlide(true);
+    Move->SetMovementMode(MOVE_Falling);
+    TestTrue(TEXT("Slide jump retains its airborne speed ceiling"), Move->GetMaxSpeed() >= Coasting);
+    TestFalse(TEXT("Slide state ends on takeoff"), Move->IsSliding());
+    Move->SetMovementMode(MOVE_Walking);
+    TestFalse(TEXT("Repeated crouch cannot immediately boost slide speed"), Move->TryStartSlide());
+    World->DestroyWorld(false);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDemoRangeSessionTest, "Demo.Gameplay.RangeSession", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDemoRangeSessionTest::RunTest(const FString& Parameters)
+{
+    UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+    auto* Range = World->SpawnActor<ADemoRangeDirector>();
+    Range->DispatchBeginPlay();
+    Range->RecordShot(true,34,false,false); Range->RecordShot(false,0,false,false); Range->RecordShot(true,68,true,true);
+    TestEqual(TEXT("Every round counts in accuracy"), Range->Shots, 3);
+    TestTrue(TEXT("Misses lower accuracy"), FMath::IsNearlyEqual(Range->GetAccuracy(), 200.f/3.f));
+    TestEqual(TEXT("Applied damage is accumulated"), Range->DamageDealt, 102.f);
+    TestEqual(TEXT("Headshots and eliminations are counted independently"), Range->Headshots, 1);
+    Range->StartTimedDrill();
+    TestTrue(TEXT("Starting a drill clears previous practice results"), Range->IsTimed() && Range->Shots == 0 && Range->Kills == 0);
+    Range->ResetSession();
+    TestFalse(TEXT("Reset cancels the active timed drill"), Range->IsTimed());
     World->DestroyWorld(false);
     return true;
 }

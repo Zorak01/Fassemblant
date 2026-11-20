@@ -16,7 +16,7 @@ class SHOOTER_API ADemoCharacter : public ACharacter
 {
     GENERATED_BODY()
 public:
-    ADemoCharacter();
+    ADemoCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
     virtual void PawnClientRestart() override;
@@ -25,6 +25,7 @@ public:
     virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     UFUNCTION(BlueprintPure, Category="Demo") bool IsSprinting() const { return bSprinting; }
+    UFUNCTION(BlueprintPure, Category="Demo") bool IsSliding() const;
     UFUNCTION(BlueprintPure, Category="Demo") float GetAimAlpha() const { return AimAlpha; }
     UFUNCTION(BlueprintPure, Category="Demo") ADemoWeapon* GetWeapon() const { return Weapon; }
     UCameraComponent* GetFirstPersonCamera() const { return Camera; }
@@ -40,6 +41,9 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Demo|Appearance") TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Demo|Camera") TObjectPtr<UDemoMotionComponent> Motion;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<USkeletalMesh> ArmsMesh;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<class UAnimSequence> ArmsIdlePose;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<class UAnimSequence> ArmsReloadPose;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<class UAnimSequence> ArmsFirePose;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Weapon") TSubclassOf<ADemoWeapon> WeaponClass;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Movement", meta=(ClampMin="100")) float WalkSpeed = 440.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Movement", meta=(ClampMin="100")) float SprintSpeed = 720.f;
@@ -98,6 +102,7 @@ private:
     bool bSprinting = false;
     bool bJumpConsumed = false;
     bool bJumpHeld = false;
+    bool bCrouchHeld = false;
     float AimAlpha = 0;
     float AimProgress = 0;
     float SprintAlpha = 0;

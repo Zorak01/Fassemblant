@@ -31,6 +31,11 @@ public:
     float GetRecoil() const { return Recoil; }
     float GetFlash() const { return Flash; }
     float GetHitAge() const;
+    float GetShotAge() const;
+    float GetSpreadDegrees() const;
+    float GetLastDamage() const { return LastDamage; }
+    bool WasLastHitHeadshot() const { return bLastHitHeadshot; }
+    void RefillAmmo();
     bool WasLastHitKill() const { return bLastHitKill; }
     FTransform GetAimPose() const;
     FVector GetHipPosition() const;
@@ -50,6 +55,11 @@ public:
     UPROPERTY(EditDefaultsOnly, Category="Demo|Audio") TObjectPtr<USoundBase> FireSound;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Audio") TObjectPtr<USoundBase> ReloadSound;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Audio") TObjectPtr<USoundBase> EmptySound;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Audio") TObjectPtr<USoundBase> HitSound;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Audio") TObjectPtr<USoundBase> KillSound;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Audio") TObjectPtr<USoundBase> ImpactSound;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<UMaterialInterface> ImpactDecal;
+    UPROPERTY() TObjectPtr<class USoundAttenuation> ImpactAttenuation;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Debug") bool bDrawDebugTraces = false;
 
     UFUNCTION(BlueprintImplementableEvent, Category="Demo|Weapon") void OnShot(const FHitResult& Hit, bool bHit);
@@ -75,6 +85,11 @@ private:
     int32 Reserve = 0;
     bool bTriggerHeld = false;
     bool bLastHitKill = false;
+    bool bLastHitHeadshot = false;
+    float LastDamage = 0;
+    float ShotBloom = 0;
+    UPROPERTY(Transient) TArray<TObjectPtr<class UDecalComponent>> ImpactMarks;
+    UPROPERTY(Transient) TObjectPtr<class ADemoRangeDirector> RangeDirector;
     double NextShotTime = 0;
     double ReloadStart = 0;
     double LastHitTime = -100;

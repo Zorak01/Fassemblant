@@ -3,6 +3,9 @@
 #include "demo/Weapons/DemoWeapon.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimNodeBase.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimationPoseData.h"
+#include "AnimationRuntime.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Camera/CameraComponent.h"
 #include "TwoBoneIK.h"
@@ -21,14 +24,45 @@ public:
         const FTransform ToComponent = Mesh->GetComponentTransform().Inverse();
         Right = Character->GetWeapon()->GetHandTarget(false) * ToComponent;
         Left = Character->GetWeapon()->GetHandTarget(true) * ToComponent;
-        RightPole = ToComponent.TransformPosition(Character->Camera->GetComponentTransform().TransformPosition(FVector(-10, 38, -42)));
-        LeftPole = ToComponent.TransformPosition(Character->Camera->GetComponentTransform().TransformPosition(FVector(-8, -38, -38)));
+        WeaponRotation = ToComponent.TransformRotation(Character->GetWeapon()->GetActorQuat())
+            * ToComponent.TransformRotation(Character->Camera->GetComponentQuat()).Inverse();
         Reload = Character->GetWeapon()->GetReloadProgress();
+        Sequence = Character->ArmsIdlePose;
+        Idle = Character->ArmsIdlePose;
+        SampleTime = Sequence ? FMath::Fmod(Character->GetWorld()->GetTimeSeconds(), Sequence->GetPlayLength()) : 0.f;
+        if (Character->GetWeapon()->IsReloading())
+        {
+            // Our magazine/handle path differs from the template rifle reload.
+            // Use the holding pose as the IK source so its open-hand gestures
+            // and shoulder travel cannot fight the actual mechanical targets.
+            Sequence = Idle;
+            SampleTime = 0.0;
+        }
+        else if (Character->ArmsFirePose && Character->GetWeapon()->GetShotAge() < Character->ArmsFirePose->GetPlayLength())
+        {
+            Sequence = Character->ArmsFirePose;
+            SampleTime = Character->GetWeapon()->GetShotAge();
+        }
     }
     virtual bool Evaluate(FPoseContext& Output) override
     {
         Output.ResetToRefPose();
         if (!bReady) return true;
+        if (Sequence)
+        {
+            FAnimationPoseData PoseData(Output);
+            if (Sequence->IsValidAdditive() && Idle)
+            {
+                Idle->GetAnimationPose(PoseData, FAnimExtractContext(0.0, false));
+                FPoseContext Additive(Output);
+                Additive.ResetToAdditiveIdentity();
+                FAnimationPoseData AdditiveData(Additive);
+                Sequence->GetAnimationPose(AdditiveData, FAnimExtractContext(SampleTime, false));
+                FAnimationRuntime::AccumulateAdditivePose(PoseData, AdditiveData, 1.f, Sequence->GetAdditiveAnimType());
+                Output.Pose.NormalizeRotations();
+            }
+            else Sequence->GetAnimationPose(PoseData, FAnimExtractContext(SampleTime, false));
+        }
         const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
         const FReferenceSkeleton& Ref = Bones.GetReferenceSkeleton();
         TArray<FTransform, TInlineAllocator<256>> Global;
@@ -39,13 +73,19 @@ public:
             Global[I.GetInt()] = Parent.IsValid() ? Output.Pose[I] * Global[Parent.GetInt()] : Output.Pose[I];
         }
         auto Index = [&Bones, &Ref](FName Name) { return Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(Ref.FindBoneIndex(Name))); };
+        // Anchor the authored holding pose as a rigid viewmodel to the firing
+        // hand. Preserve the entire dominant arm, wrist and finger articulation;
+        // forcing both elbows through camera-space poles distorts Manny's skin.
+        const auto Grip = Index(TEXT("hand_r"));
+        if (Grip.IsValid())
+        {
+            const FVector Hand = Global[Grip.GetInt()].GetLocation();
+            const FTransform Alignment(WeaponRotation, Right.GetLocation() - WeaponRotation.RotateVector(Hand));
+            for (FTransform& Bone : Global) Bone = Bone * Alignment;
+        }
         struct FArm { FCompactPoseBoneIndex Upper, Lower, Hand; FTransform U, L, H; };
         TArray<FArm, TInlineAllocator<2>> Arms;
-        TArray<FVector, TInlineAllocator<256>> CurlAxes;
-        TArray<float, TInlineAllocator<256>> CurlAngles;
-        CurlAxes.Init(FVector::ZeroVector, Global.Num());
-        CurlAngles.Init(0.f, Global.Num());
-        for (bool bLeft : {false, true})
+        for (bool bLeft : {true})
         {
             FArm Arm;
             Arm.Upper = Index(bLeft ? TEXT("upperarm_l") : TEXT("upperarm_r"));
@@ -66,20 +106,9 @@ public:
                 // Data targets describe a physical palm, not mirrored skeleton axes.
                 // This calibration handles Manny's different left/right bone bases.
                 BoneRotation = Target.GetRotation() * PalmBasis.Inverse() * Arm.H.GetRotation();
-                for (FCompactPoseBoneIndex I : Output.Pose.ForEachBoneIndex())
-                {
-                    const FString Name = Ref.GetBoneName(Bones.MakeMeshPoseIndex(I).GetInt()).ToString();
-                    if (!Name.EndsWith(bLeft ? TEXT("_l") : TEXT("_r")) || Name.Contains(TEXT("meta"))) continue;
-                    const bool bFinger = Name.StartsWith(TEXT("index_")) || Name.StartsWith(TEXT("middle_")) || Name.StartsWith(TEXT("ring_")) || Name.StartsWith(TEXT("pinky_")) || Name.StartsWith(TEXT("thumb_"));
-                    if (!bFinger) continue;
-                    CurlAxes[I.GetInt()] = Global[I.GetInt()].GetRotation().UnrotateVector(Across);
-                    float Curl = Name.StartsWith(TEXT("thumb")) ? 22.f : 48.f;
-                    if (Name.StartsWith(TEXT("index")) && !bLeft) Curl = 25.f;
-                    if (bLeft && Reload > 0.08f && Reload < 0.78f) Curl = 32.f;
-                    CurlAngles[I.GetInt()] = -FMath::DegreesToRadians(Curl);
-                }
             }
-            AnimationCore::SolveTwoBoneIK(Arm.U, Arm.L, Arm.H, bLeft ? LeftPole : RightPole, Target.GetLocation(), false, 1.0, 1.0);
+            const FVector AuthoredElbow = Arm.L.GetLocation();
+            AnimationCore::SolveTwoBoneIK(Arm.U, Arm.L, Arm.H, AuthoredElbow, Target.GetLocation(), false, 1.0, 1.0);
             Arm.H.SetRotation(BoneRotation);
             Arms.Add(Arm);
         }
@@ -87,9 +116,8 @@ public:
         // the solved limb transforms; the source skeleton is never modified.
         for (FCompactPoseBoneIndex I : Output.Pose.ForEachBoneIndex())
         {
-            if (!CurlAxes[I.GetInt()].IsNearlyZero()) Output.Pose[I].SetRotation(Output.Pose[I].GetRotation() * FQuat(CurlAxes[I.GetInt()], CurlAngles[I.GetInt()]));
             const FCompactPoseBoneIndex Parent = Bones.GetParentBoneIndex(I);
-            FTransform Component = Parent.IsValid() ? Output.Pose[I] * Global[Parent.GetInt()] : Output.Pose[I];
+            FTransform Component = Parent.IsValid() ? Output.Pose[I] * Global[Parent.GetInt()] : Global[I.GetInt()];
             for (const FArm& Arm : Arms)
             {
                 if (I == Arm.Upper) Component = Arm.U;
@@ -105,8 +133,11 @@ public:
 private:
     bool bReady = false;
     FTransform Right, Left;
-    FVector RightPole, LeftPole;
+    FQuat WeaponRotation = FQuat::Identity;
     float Reload = 0;
+    UAnimSequence* Sequence = nullptr;
+    UAnimSequence* Idle = nullptr;
+    double SampleTime = 0;
 };
 FAnimInstanceProxy* UDemoArmsAnimInstance::CreateAnimInstanceProxy() { return new FDemoArmsProxy(this); }
 void UDemoArmsAnimInstance::DestroyAnimInstanceProxy(FAnimInstanceProxy* Proxy) { delete Proxy; }

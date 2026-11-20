@@ -17,6 +17,7 @@ private:
     void Capture(const FString& Name);
     void Finish();
     UPROPERTY() TObjectPtr<class ADemoCharacter> Character;
+    UPROPERTY() TObjectPtr<class ADemoTarget> TestTarget;
     int32 Stage = 0;
     float Elapsed = 0;
     float Total = 0;

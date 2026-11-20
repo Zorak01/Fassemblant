@@ -29,6 +29,15 @@ namespace DemoAssets
 }
 #endif
 
+void UDemoEditorLibrary::MountTemplateResources()
+{
+#if WITH_EDITOR
+    const FString Templates = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("../Templates/"));
+    FPackageName::RegisterMountPoint(TEXT("/Game/Characters/"), Templates / TEXT("TemplateResources/High/Characters/Content/"));
+    FPackageName::RegisterMountPoint(TEXT("/Game/Weapons/"), Templates / TEXT("TemplateResources/Standard/Weapons/Content/"));
+#endif
+}
+
 USkeletalMesh* UDemoEditorLibrary::PrepareMannequin()
 {
 #if WITH_EDITOR

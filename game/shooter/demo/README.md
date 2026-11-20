@@ -7,7 +7,7 @@ No marketplace packs or external downloads are required.
 ## Launch
 
 Double-click the repository's `Launch.bat`, then press Enter. Or open
-`shooter.uproject`, open `/Game/demo/Maps/DemoRange`, and press Play.
+`shooter.uproject`, open `/Game/demo/Maps/TrainingFacility`, and press Play.
 The launcher detects the engine and builds/generates only missing pieces:
 
 ```powershell
@@ -27,14 +27,40 @@ existing range map. Generated binaries and caches are ignored by Git.
 | Run (hold, forward) | Left Shift | Left stick click |
 | Jump (variable height) | Space | A / Cross |
 | Crouch (hold) | Ctrl or C | Right stick click |
+| Slide from sprint | Shift + Ctrl / C | Sprint + crouch |
+| Jump out of slide | Space | A / Cross |
 | Aim down the physical sight (hold) | Right mouse | Left trigger |
 | Fire (automatic) | Left mouse | Right trigger |
 | Reload | R | X / Square |
+| Refill ammo and reset targets/statistics | E | — |
+| Start/restart 60-second drill | T | — |
 
 Shift lowers the weapon; aiming exits sprint. Reload blocks shooting, aiming,
 and sprinting. Empty fire starts a reload if reserves remain. Ammo transfers
-only when the reload finishes. Targets reset after 2.5 seconds. Restart Play
-to refill ammunition and reset the score.
+only when the reload finishes. Facility targets reset after 1.8 seconds; head
+hits deal double damage. E resets the range and gives 600 reserve rounds.
+
+The facility has precision lanes, moving-target tracks, standing-height slide
+gates, an acceleration ramp, jump platforms and cover. The original `DemoRange`
+map is preserved. Normal setup never overwrites an existing facility; the
+authoring script's explicit `-DemoRebuildTraining` flag rebuilds its layout.
+
+`UDemoMovementComponent` retains Unreal's floor/collision physics while applying
+slide-specific friction, limited lateral steering, downhill acceleration and
+an entry boost with a cooldown. Forward input cannot accelerate a slide. Jumping
+preserves momentum; holding crouch through descent can chain a landing slide.
+Holding Shift resumes sprint when crouch is released. Slide tuning is exposed
+on the character's movement component.
+
+The outlined reticle projects the weapon's actual spread cone, including speed,
+crouch, air state and shot bloom. It pulses on fire, fades for sprint/reload/ADS,
+and adds fading hit markers and critical-damage readouts. The range panel reports
+accuracy, applied damage per second, kills and headshots; T starts a timed trial.
+
+Thirteen original PCM cues under `assets/demo/Audio/Training` add layered firing,
+reload and empty mechanisms, four footstep variations, landing, slide onset/loop,
+spatial impacts and separate hit/kill confirmations. Camera shot impulses,
+sprint gait, landing and slide feedback are cosmetic and do not steer traces.
 
 Movement uses softer acceleration/braking. Captured relative mouse input is
 applied immediately with no smoothing buffer, acceleration or hidden axis gain.
@@ -103,20 +129,25 @@ timeline as gameplay. Changing a grip/sight in the data asset changes the
 corresponding hand/ADS alignment. The asset can be replaced with authored art
 without changing movement or weapon gameplay.
 
-`SK_DemoArms` is an arms-only derivative of Epic's bundled Manny Simple mesh.
-It preserves the mannequin skeleton, skin weights and finger hierarchy. Body,
-head and leg triangles are removed from each source LOD. Local skeleton and
-materials are used so the Mover plugins do not need to be enabled at runtime.
-No First Person Sample project or assets are used.
+The active first-person mesh is Epic's original `SKM_Manny_Simple`, with its
+original textured materials, skeleton and rifle idle, fire and reload clips.
+Only the 16 selected packages and their hard dependencies are copied from the
+installed UE 5.8 template resources into `Content/Characters`. Head and legs
+are hidden at runtime. No First Person Sample project is used.
 
 `UDemoArmsAnimInstance` samples weapon palm targets on the game thread, then
-solves two-bone IK during animation evaluation. Palm-space calibration handles
-Manny's mirrored bone axes; finger curl follows the palm plane. The support
+evaluates the authored rifle clips, anchors the original firing arm to the
+weapon, then solves support-arm IK using the authored elbow position. Mesh-space
+additive firing is accumulated over the rifle idle pose. Palm-space calibration
+handles Manny's mirrored bone axes; fingers retain the authored pose. The support
 hand transitions from the foregrip to the moving magazine and charging handle
 during reload. Recoil, ADS, sprint and idle motion move the rifle and both grip
-targets together. This is a native procedural animation layer on a regular
-`USkeletalMeshComponent`; it can be replaced/extended with authored mannequin
-Animation Blueprints and clips.
+targets together on a regular `USkeletalMeshComponent`.
+
+The replacement carbine's editable source is `assets/demo/Weapons/Carbine.blend`.
+`build_carbine.py` builds beveled, machined surfaces and exports five mechanical
+groups. `demo/Scripts/import_carbine_v2.py` imports them and assigns the materials
+and physical sight. The optic has a real opening; the reticle is weapon geometry.
 
 The first-person mesh and weapon use Unreal's native first-person FOV/scale
 rendering to reduce wall clipping. The world and viewmodel FOVs converge in ADS.
@@ -135,6 +166,20 @@ The rifle and audio are created by this project. Audio is synthesized placeholde
 sound design, not sampled from either reference game. Epic mannequin derivatives
 remain Epic Unreal Engine content. Networking, a full third-person body, authored
 cinematic animation clips, and production sound design remain future work.
+
+Movement cues use unpitched heel/sole/toe layers and an overlapped friction loop.
+Footstep selection avoids immediate repeats; sliding suppresses footsteps and
+fades its quieter loop in/out. To regenerate existing cues deliberately, run
+`create_training_audio.py` with the editor command-line flag `-DemoRebuildAudio`.
+Normal setup preserves existing audio assets.
+
+The rail has an integral handguard saddle and ends behind its front face.
+The magazine grip faces inward with fingers angled up the magazine. The reload
+presentation moves the weapon forward/up to keep the magazine work in frame.
+Reload IK starts from the holding pose, retaining the gripping fingers and stable
+shoulders instead of imposing the template clip's incompatible magazine gestures.
+Presentation checks cover palm orientation at reach, extraction, transport,
+insertion and charging-handle phases, with separate rendered captures.
 
 ## Verification
 

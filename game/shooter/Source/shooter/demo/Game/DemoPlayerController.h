@@ -12,6 +12,9 @@ public:
     UFUNCTION(Exec) void DemoADSSensitivity(float Multiplier = 0.22f);
     UFUNCTION(Exec) void DemoInvertMouse(bool bInvert = false);
     UFUNCTION(Exec) void DemoInputSettings();
+    UFUNCTION(Exec) void DemoResetRange();
+    UFUNCTION(Exec) void DemoTimedDrill();
 protected:
     virtual void InitInputSystem() override;
+    virtual void SetupInputComponent() override;
 };

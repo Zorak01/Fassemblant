@@ -1,4 +1,4 @@
-"""Author the demo's own carbine and derive arms from Epic's bundled Manny.
+"""Prepare demo audio and fallbacks; use Epic's original template mannequin.
 No First Person Sample assets or projects are read or imported.
 Existing art assets and user-edited maps are preserved.
 """
@@ -17,28 +17,15 @@ assets = unreal.EditorAssetLibrary
 tools = unreal.AssetToolsHelpers.get_asset_tools()
 ROOT = "/Game/demo"
 
-graphite = material("M_RifleGraphite", (0.032, 0.043, 0.052), 0.78, 0.3)
-ceramic = material("M_RifleCeramic", (0.38, 0.33, 0.24), 0.40, 0.43)
-steel = material("M_RifleSteel", (0.24, 0.29, 0.32), 0.92, 0.25)
-rubber = material("M_RifleRubber", (0.013, 0.018, 0.021), 0.0, 0.82)
-accent = material("M_RifleAccent", (0.85, 0.18, 0.035), 0.55, 0.4)
 glow = material("M_OpticEmitter", (1.0, 0.02, 0.005), 0.0, 0.4, 10.0)
 flash = material("M_MuzzleEmitter", (1.0, 0.39, 0.065), 0.0, 0.4, 15.0)
-arms_material = material("M_ArmsCeramic", (0.32, 0.39, 0.42), 0.65, 0.4)
-for skinned_surface in [arms_material, rubber]:
-    unreal.MaterialEditingLibrary.set_material_usage(skinned_surface, unreal.MaterialUsage.MATUSAGE_SKELETAL_MESH)
-    unreal.MaterialEditingLibrary.recompile_material(skinned_surface)
-    assets.save_loaded_asset(skinned_surface, only_if_is_dirty=False)
 
-arms = unreal.DemoEditorLibrary.prepare_mannequin()
+epic_mesh = "/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"
+if not assets.does_asset_exist(epic_mesh):
+    runpy.run_path(str(Path(__file__).with_name("copy_template_mannequin.py")))
+arms = unreal.load_asset(epic_mesh)
 if not arms:
-    raise RuntimeError("Mannequin arms extraction failed; inspect DemoArmsSetup.log / shooter.log")
-slots = arms.get_editor_property("materials")
-for slot, entry in enumerate(slots):
-    entry.set_editor_property("material_interface", arms_material if slot == 0 else rubber)
-arms.set_editor_property("materials", slots)
-if not assets.save_loaded_asset(arms, only_if_is_dirty=False):
-    raise RuntimeError("Cannot save mannequin arms (check file permissions).")
+    raise RuntimeError("Install Unreal Templates and Feature Packs to prepare the original mannequin.")
 
 
 def shape(name, sections, surface, sides=8, wall=0.0):
@@ -48,73 +35,27 @@ def shape(name, sections, surface, sides=8, wall=0.0):
     return result
 
 
-receiver = shape("SM_KestrelReceiver", [(-10, 2.25, 2.55), (-8.5, 3, 3.25), (9, 3, 3.25), (14, 2.5, 2.6)], ceramic)
-handguard = shape("SM_KestrelHandguard", [(12, 2.6, 2.6), (15, 2.7, 2.5), (33, 2.3, 2.3), (36, 1.9, 2.1)], graphite, wall=0.4)
-barrel = shape("SM_KestrelBarrel", [(31, 0.8, 0.8), (48, 0.8, 0.8), (49, 1.0, 1.0), (52, 1.0, 1.0)], steel, 16)
-brake = shape("SM_KestrelBrake", [(51, 1.5, 1.5), (52, 1.8, 1.8), (59, 1.8, 1.8), (60, 1.4, 1.4)], graphite, 12, 0.45)
-stock = shape("SM_KestrelStock", [(-29, 1.9, 4.2), (-26, 1.9, 4.0), (-21, 1.45, 2.3), (-11, 1.45, 1.6)], graphite)
-stock_pad = shape("SM_KestrelPad", [(-30, 2.0, 4.4), (-28.8, 2.0, 4.4)], rubber)
-grip = shape("SM_KestrelGrip", [(0, 1.65, 2.05), (2, 1.8, 2.15), (10, 1.5, 2.1), (11, 1.4, 1.8)], rubber)
-magazine = shape("SM_KestrelMagazine", [(0, 1.7, 3.1), (3, 1.8, 3.0), (11, 1.7, 2.7), (15, 1.6, 2.5)], graphite)
-mag_pad = shape("SM_KestrelMagPad", [(14.5, 1.9, 2.8), (16, 1.9, 2.8)], accent)
-optic = shape("SM_KestrelOptic", [(-1, 2.4, 2.0), (0, 2.7, 2.3), (3, 2.7, 2.3), (4, 2.35, 2.0)], graphite, 12, 0.35)
+# Only the tiny emissive effects use generated profile geometry. The rifle
+# itself is authored in Blender and imported as five mechanical groups.
 dot = shape("SM_KestrelReticle", [(-0.02, 0.045, 0.045), (0.02, 0.045, 0.045)], glow, 12)
-beam = shape("SM_KestrelBeam", [(-0.5, 0.45, 0.45), (0.5, 0.45, 0.45)], graphite)
-bolt = shape("SM_KestrelBolt", [(0, 0.35, 0.7), (6, 0.35, 0.7)], steel)
-screw = shape("SM_KestrelScrew", [(-0.1, 0.32, 0.32), (0.2, 0.32, 0.32)], steel, 8)
 flash_mesh = shape("SM_KestrelMuzzleFlash", [(0, 0.3, 0.3), (1.6, 1.4, 0.5), (5.5, 0.03, 0.03)], flash, 8)
-
 data_path = ROOT + "/Weapons/DA_Kestrel"
 data = unreal.load_asset(data_path) if assets.does_asset_exist(data_path) else None
 if not data:
     factory = unreal.DataAssetFactory()
     factory.set_editor_property("data_asset_class", unreal.DemoWeaponVisualData)
     data = tools.create_asset("DA_Kestrel", ROOT + "/Weapons", unreal.DemoWeaponVisualData, factory)
-    parts = []
-
-    def part(name, mesh, pos=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1), attach=unreal.DemoWeaponAttachment.BODY, surface=None):
-        p = unreal.DemoWeaponPart()
-        p.set_editor_property("name", name)
-        p.set_editor_property("mesh", mesh)
-        if surface:
-            p.set_editor_property("material", surface)
-        p.set_editor_property("transform", unreal.Transform(location=unreal.Vector(*pos), rotation=unreal.Rotator(*rot), scale=unreal.Vector(*scale)))
-        p.set_editor_property("attachment", attach)
-        parts.append(p)
-
-    part("Receiver", receiver)
-    part("Handguard", handguard)
-    part("Barrel", barrel)
-    part("Brake", brake)
-    part("Stock", stock, (0, 0, -1.0))
-    part("StockPad", stock_pad, (0, 0, -1.0))
-    part("PistolGrip", grip, (-3, 0, -2.5), (-105, 0, 0))
-    part("ForeGrip", grip, (18, 0, -1.5), (-75, 0, 0), (0.55, 1, 0.85))
-    part("MagazineShell", magazine, rot=(-80, 0, 0), attach=unreal.DemoWeaponAttachment.MAGAZINE)
-    part("MagazinePad", mag_pad, rot=(-80, 0, 0), attach=unreal.DemoWeaponAttachment.MAGAZINE)
-    part("OpticHousing", optic, (2, 0, 8.2))
-    part("OpticMount", beam, (3, 0, 4.8), scale=(8, 3, 2.8), surface=steel)
-    part("OpticDot", dot, (11, 0, 8.2))
-    part("EjectionSlot", beam, (3, -2.82, 1), scale=(12, 0.6, 2), surface=rubber)
-    part("BoltCarrier", bolt, (0, -3.1, 1), attach=unreal.DemoWeaponAttachment.BOLT)
-    part("ChargingLever", beam, (-5, -3.2, 3), scale=(3, 4, 1), attach=unreal.DemoWeaponAttachment.CHARGING_HANDLE, surface=steel)
-    part("TriggerBlade", beam, (-0.5, 0, -5), (-35, 0, 0), (2.5, 0.8, 0.8), unreal.DemoWeaponAttachment.TRIGGER, steel)
-    for side in [-1, 1]:
-        part("TriggerGuardSide" + str(side), beam, (-0.2, side * 1.2, -6), scale=(7, 0.7, 0.7))
-        for index in range(5):
-            part("HandguardVent%s_%s" % (side, index), beam, (17 + index * 3.5, side * 2.35, 0.1), scale=(2.3, 0.7, 1.9), surface=rubber)
-        for index in range(3):
-            part("ReceiverScrew%s_%s" % (side, index), screw, (-7 + index * 6, side * 2.95, 0), (0, side * 90, 0))
-    for index in range(10):
-        part("RailTooth%s" % index, beam, (-7 + index * 3.8, 0, 3.2), scale=(1.2, 4.0, 0.5), surface=steel)
-    for index in range(3):
-        part("BarrelCollar%s" % index, brake, (-16 + index * 3, 0, 0), scale=(1, 0.65, 0.65), surface=steel)
-    part("MuzzleBurst", flash_mesh, attach=unreal.DemoWeaponAttachment.MUZZLE_FLASH)
-    part("MuzzleBurstCross", flash_mesh, rot=(0, 0, 90), attach=unreal.DemoWeaponAttachment.MUZZLE_FLASH)
-    data.set_editor_property("parts", parts)
-    data.set_editor_property("right_hand", unreal.Transform(location=unreal.Vector(-1, 3.3, -6), rotation=unreal.Rotator(0, 0, 90)))
-    data.set_editor_property("left_hand", unreal.Transform(location=unreal.Vector(18, -2.8, -4), rotation=unreal.Rotator(0, 0, -90)))
-    assets.save_loaded_asset(data)
+parts = list(data.get_editor_property("parts"))
+for name, mesh, attachment in [
+    ("OpticDot", dot, unreal.DemoWeaponAttachment.BODY),
+    ("MuzzleEmitter", flash_mesh, unreal.DemoWeaponAttachment.MUZZLE_FLASH),
+]:
+    if not any(str(p.name) == name for p in parts):
+        part = unreal.DemoWeaponPart()
+        part.name, part.mesh, part.attachment = name, mesh, attachment
+        parts.append(part)
+data.set_editor_property("parts", parts)
+assets.save_loaded_asset(data, only_if_is_dirty=True)
 
 
 def sound(name, kind):
@@ -179,6 +120,8 @@ character_bp = unreal.load_asset(ROOT + "/Character/BP_DemoCharacter")
 character_class = unreal.load_class(None, character_bp.get_path_name() + "_C")
 character = unreal.get_default_object(character_class)
 character.set_editor_property("arms_mesh", arms)
+for prop, clip in [("arms_idle_pose", "MF_Rifle_Idle_ADS"), ("arms_fire_pose", "MM_Rifle_Fire"), ("arms_reload_pose", "MM_Rifle_Reload")]:
+    character.set_editor_property(prop, unreal.load_asset("/Game/Characters/Mannequins/Anims/Rifle/" + clip))
 character.set_editor_property("scope_fov", 78.0)
 motion = character.get_editor_property("motion")
 motion.set_editor_property("footstep_sound", step_sound)
@@ -186,12 +129,18 @@ motion.set_editor_property("landing_sound", land_sound)
 if not assets.save_loaded_asset(character_bp, only_if_is_dirty=False):
     raise RuntimeError("Cannot save BP_DemoCharacter; make the asset writable or check it out first.")
 assets.save_directory(ROOT, only_if_is_dirty=True, recursive=True)
-required = [ROOT + path for path in [
-    "/Character/Mannequin/SK_DemoArms", "/Character/Mannequin/SK_DemoSkeleton",
+runpy.run_path(str(Path(__file__).with_name("configure_template_arms.py")))
+runpy.run_path(str(Path(__file__).with_name("setup_training.py")))
+required = json.loads((Path(__file__).resolve().parents[1] / "FirstPersonAssets.json").read_text(encoding="utf-8"))["assets"]
+required += [ROOT + path for path in [
     "/Character/BP_DemoCharacter", "/Weapons/BP_DemoRifle", "/Weapons/DA_Kestrel",
     "/Audio/S_KestrelFire", "/Audio/S_KestrelReload", "/Audio/S_ConcreteStep", "/Audio/S_ConcreteLand",
-    "/Materials/M_ArmsCeramic", "/Materials/M_RifleRubber"]]
-required += [str(p).split(".")[0] for p in assets.list_assets(ROOT + "/Weapons/Meshes", recursive=True, include_folder=False)]
+    "/Weapons/Meshes/SM_KestrelReticle", "/Weapons/Meshes/SM_KestrelMuzzleFlash",
+    "/Materials/M_OpticEmitter", "/Materials/M_MuzzleEmitter"]]
+content = Path(unreal.Paths.project_content_dir()).resolve()
+for folder in [content / "Characters", content / "demo/Weapons/CarbineV2"]:
+    required += ["/Game/" + str(p.relative_to(content).with_suffix("")).replace("\\", "/") for p in folder.rglob("*.uasset")]
+required += [ROOT + "/Materials/M_V2" + name for name in ["Anodized", "Ceramic", "Steel", "Polymer", "Safety"]]
 marker = Path(__file__).resolve().parents[1] / "FirstPersonAssets.json"
 marker.write_text(json.dumps({"schema": 1, "assets": sorted(set(required))}, indent=2) + "\n", encoding="utf-8")
 unreal.log("DEMO_FIRST_PERSON_READY: physical optic, Kestrel carbine, mannequin arms, synchronized audio")

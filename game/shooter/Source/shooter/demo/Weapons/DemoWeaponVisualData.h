@@ -28,7 +28,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="10")) float EyeRelief = 24.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite) FTransform RightHand = FTransform(FRotator(0, 0, 90), FVector(-1, 3.2, -6));
     UPROPERTY(EditAnywhere, BlueprintReadWrite) FTransform LeftHand = FTransform(FRotator(0, 0, -90), FVector(18, -2.8, -4));
-    UPROPERTY(EditAnywhere, BlueprintReadWrite) FTransform MagazineHand = FTransform(FRotator(0, 0, 90), FVector(8, -4, -11));
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) FTransform MagazineHand = FTransform(FRotator(70, 0, -90), FVector(8, -4, -11));
     UPROPERTY(EditAnywhere, BlueprintReadWrite) FVector Muzzle = FVector(59, 0, 0);
     UPROPERTY(EditAnywhere, BlueprintReadWrite) FVector HipPosition = FVector(25, 12, -16);
 };

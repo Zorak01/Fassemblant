@@ -131,9 +131,9 @@ function Build-Project($Engine, $Toolchain) {
 }
 
 function Ensure-Map($Engine) {
-    $map = Join-Path $projectRoot 'Content/demo/Maps/DemoRange.umap'
+    $map = Join-Path $projectRoot 'Content/demo/Maps/TrainingFacility.umap'
     if (Test-Path -LiteralPath $map) { Write-Host '  Demo map ready; preserving existing assets.' -ForegroundColor Green; return }
-    $scriptPath = Join-Path $projectRoot 'demo/Scripts/create_demo.py'
+    $scriptPath = Join-Path $projectRoot 'demo/Scripts/create_training_range.py'
     $arguments = @($project, '-run=pythonscript', "-script=$scriptPath", '-unattended', '-nosplash', '-nop4', '-NullRHI', '-NoLiveCoding')
     Invoke-NativeLogged (Join-Path $Engine.Root 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') $arguments (Join-Path $logs 'Generate.log') 'Creating demo content'
     if (!(Test-Path -LiteralPath $map)) { throw 'Editor exited without creating the demo map. See Generate.log and Saved/Logs/shooter.log.' }
@@ -162,7 +162,7 @@ function Ensure-FirstPerson($Engine) {
     $missing = @()
     if ($manifest -and $manifest.PSObject.Properties['assets']) {
         foreach ($asset in $manifest.assets) {
-            if (!$asset.StartsWith('/Game/demo/')) { throw 'Invalid first-person asset manifest path.' }
+            if ($asset -notmatch '^/Game/(demo|Characters)/[A-Za-z0-9_/]+$') { throw 'Invalid first-person asset manifest path.' }
             $file = Join-Path $projectRoot ('Content/' + $asset.Substring(6) + '.uasset')
             if (!(Test-Path -LiteralPath $file)) { $missing += $asset }
         }
@@ -196,7 +196,7 @@ function Invoke-Task([string]$Task) {
     if ($Task -eq 'Generate') { return }
     if ($Task -eq 'VisualTest') {
         $reportRoot = Join-Path $projectRoot ('Saved/Automation/Presentation/Run-' + [guid]::NewGuid().ToString('N'))
-        $arguments = @($project, '/Game/demo/Maps/DemoRange', '-game', '-RenderOffscreen', '-unattended', '-NoSound', '-ResX=1280', '-ResY=720', '-nosplash', '-nop4', '-NoLiveCoding', '-DemoPresentationTest', "-DemoReportDir=$reportRoot", '-ExecCmds=t.MaxFPS 60,r.MotionBlurQuality 0,r.ScreenPercentage 100')
+        $arguments = @($project, '/Game/demo/Maps/TrainingFacility', '-game', '-RenderOffscreen', '-unattended', '-ResX=1280', '-ResY=720', '-nosplash', '-nop4', '-NoLiveCoding', '-DemoPresentationTest', "-DemoReportDir=$reportRoot", '-ExecCmds=t.MaxFPS 60,r.MotionBlurQuality 0,r.ScreenPercentage 100')
         Invoke-NativeLogged (Join-Path $engine.Root 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') $arguments (Join-Path $logs 'Presentation.log') 'Running rendered play test (GPU required)'
         $report = Read-JsonFile (Join-Path $reportRoot 'report.json')
         if (!$report -or !$report.passed) { throw "Rendered play test failed or did not finish. Report/screenshots: $reportRoot" }
@@ -212,7 +212,7 @@ function Invoke-Task([string]$Task) {
         return
     }
     $editor = Join-Path $engine.Root 'Engine/Binaries/Win64/UnrealEditor.exe'
-    $arguments = @($project, '/Game/demo/Maps/DemoRange', '-NoLiveCoding', '-nosplash', '-nop4')
+    $arguments = @($project, '/Game/demo/Maps/TrainingFacility', '-NoLiveCoding', '-nosplash', '-nop4')
     if ($Task -eq 'Play') { $arguments += @('-game', '-windowed', '-ResX=1600', '-ResY=900') }
     # Interactive editor/game is intentionally visible; helper installers stay hidden.
     Start-Process -FilePath $editor -ArgumentList (($arguments | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' ')

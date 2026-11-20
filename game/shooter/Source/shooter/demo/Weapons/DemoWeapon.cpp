@@ -2,7 +2,11 @@
 #include "demo/Character/DemoCharacter.h"
 #include "demo/Weapons/DemoWeaponVisualData.h"
 #include "demo/World/DemoTarget.h"
+#include "demo/World/DemoRangeDirector.h"
+#include "Sound/SoundAttenuation.h"
+#include "Components/DecalComponent.h"
 #include "Camera/CameraComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
@@ -35,6 +39,11 @@ ADemoWeapon::ADemoWeapon()
     MuzzleFlash->SetupAttachment(Muzzle);
     MuzzleFlash->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     MuzzleFlash->SetVisibility(false);
+    ImpactAttenuation = CreateDefaultSubobject<USoundAttenuation>(TEXT("ImpactAttenuation"));
+    ImpactAttenuation->Attenuation.bAttenuate = true;
+    ImpactAttenuation->Attenuation.bSpatialize = true;
+    ImpactAttenuation->Attenuation.AttenuationShapeExtents = FVector(150.f);
+    ImpactAttenuation->Attenuation.FalloffDistance = 4500.f;
 }
 
 void ADemoWeapon::BuildVisuals()
@@ -84,6 +93,7 @@ void ADemoWeapon::BeginPlay()
     Ammo = FMath::Max(1, MagazineSize);
     Reserve = FMath::Max(0, StartingReserve);
     BuildVisuals();
+    RangeDirector = ADemoRangeDirector::Find(this);
 }
 void ADemoWeapon::SetTrigger(bool bDown)
 {
@@ -93,6 +103,7 @@ void ADemoWeapon::SetTrigger(bool bDown)
 void ADemoWeapon::Tick(float Dt)
 {
     Super::Tick(Dt);
+    ShotBloom *= FMath::Exp(-7.f * Dt);
     // Exact critically damped return: same recovery curve at 30/60/144 fps.
     const float Response = 28.f;
     const float Decay = FMath::Exp(-Response * Dt);
@@ -107,9 +118,13 @@ void ADemoWeapon::Tick(float Dt)
     {
         const float Progress = GetReloadProgress();
         const float Drop = FMath::Sin(FMath::Clamp((Progress - 0.13f) / 0.62f, 0.f, 1.f) * PI);
-        Magazine->SetRelativeLocation(FVector(8 - 3.f * Drop, -9.f * Drop, -5.f - 11.f * Drop));
+        Magazine->SetRelativeLocation(FVector(8 - 3.f * Drop, -9.f * Drop, -5.f - 9.f * Drop));
         Magazine->SetRelativeRotation(FRotator(0, 0, -24.f * Drop));
         BoltPull = FMath::Sin(FMath::Clamp((Progress - 0.78f) / 0.17f, 0.f, 1.f) * PI);
+    }
+    else
+    {
+        Magazine->SetRelativeLocationAndRotation(FVector(8, 0, -5), FRotator::ZeroRotator);
     }
     Bolt->SetRelativeLocation(FVector(-3.5f * BoltPull, 0, 0));
     ChargingHandle->SetRelativeLocation(FVector(-4.5f * (IsReloading() ? BoltPull : Cycle * 0.3f), 0, 0));
@@ -139,7 +154,8 @@ void ADemoWeapon::TryFire()
     auto* Camera = Character->GetFirstPersonCamera();
     const FVector Start = Camera->GetComponentLocation();
     const float Aim = Character->GetAimAlpha();
-    const float SpreadDegrees = FMath::Lerp(0.45f, 0.012f, Aim) + Character->GetVelocity().Size2D() * FMath::Lerp(0.00035f, 0.000015f, Aim);
+    const float SpreadDegrees = GetSpreadDegrees();
+    ShotBloom = FMath::Min(ShotBloom + 0.16f, 0.65f);
     // Control rotation is authoritative. Camera/viewmodel animation never steers bullets.
     const FVector Direction = FMath::VRandCone(Character->GetBaseAimRotation().Vector(), FMath::DegreesToRadians(SpreadDegrees));
     FCollisionQueryParams Query(SCENE_QUERY_STAT(DemoWeaponTrace), true, Character);
@@ -151,19 +167,41 @@ void ADemoWeapon::TryFire()
     const FVector AimPoint = bHit ? Hit.ImpactPoint : Start + Direction * Range;
     if (GetWorld()->LineTraceSingleByChannel(BarrelHit, Muzzle->GetComponentLocation(), AimPoint, ECC_Visibility, Query)) Hit = BarrelHit;
     const bool bFinalHit = Hit.bBlockingHit;
+    float AppliedDamage = 0;
+    bool bTargetHit = false;
+    bool bKilled = false;
+    bool bHeadshot = false;
     if (bFinalHit && Hit.GetActor())
     {
         auto* Target = Cast<ADemoTarget>(Hit.GetActor());
         const bool bWasActive = Target && Target->IsActive();
-        UGameplayStatics::ApplyPointDamage(Hit.GetActor(), Damage, Direction, Hit, Character->GetController(), this, UDamageType::StaticClass());
+        AppliedDamage = UGameplayStatics::ApplyPointDamage(Hit.GetActor(), Damage, Direction, Hit, Character->GetController(), this, UDamageType::StaticClass());
         if (bWasActive)
         {
+            bTargetHit = true;
+            bHeadshot = Target->WasLastHitHeadshot();
+            LastDamage = AppliedDamage;
+            bLastHitHeadshot = bHeadshot;
             LastHitTime = Now;
             bLastHitKill = !Target->IsActive();
+            bKilled = bLastHitKill;
             if (bLastHitKill) Character->RecordElimination();
+            if (USoundBase* Cue = bKilled ? KillSound.Get() : HitSound.Get()) UGameplayStatics::PlaySound2D(this, Cue, 0.55f, bHeadshot ? 1.18f : 1.f);
         }
         if (Hit.GetComponent() && Hit.GetComponent()->IsSimulatingPhysics()) Hit.GetComponent()->AddImpulseAtLocation(Direction * 12000.f, Hit.ImpactPoint);
         if (bDrawDebugTraces) DrawDebugPoint(GetWorld(), Hit.ImpactPoint + Hit.ImpactNormal, 6.f, FColor(255, 190, 95), false, 0.12f);
+    }
+    if (RangeDirector) RangeDirector->RecordShot(bTargetHit, bTargetHit ? AppliedDamage : 0, bKilled, bHeadshot);
+    if (bFinalHit)
+    {
+        if (ImpactSound) UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, Hit.ImpactPoint, 0.55f, 1.f, 0.f, ImpactAttenuation);
+        if (ImpactDecal && !bTargetHit && Hit.GetComponent() && Hit.GetComponent()->Mobility == EComponentMobility::Static)
+        {
+            ImpactMarks.RemoveAll([](const auto& Mark) { return !IsValid(Mark); });
+            if (ImpactMarks.Num() >= 48) { ImpactMarks[0]->DestroyComponent(); ImpactMarks.RemoveAt(0); }
+            if (auto* Mark = UGameplayStatics::SpawnDecalAtLocation(this, ImpactDecal, FVector(1.2, 2.2, 2.2), Hit.ImpactPoint + Hit.ImpactNormal * .1f, Hit.ImpactNormal.Rotation(), 12.f))
+            { Mark->SetFadeOut(9.f, 3.f); ImpactMarks.Add(Mark); }
+        }
     }
     if (bDrawDebugTraces) DrawDebugLine(GetWorld(), Muzzle->GetComponentLocation(), bFinalHit ? Hit.ImpactPoint : AimPoint, FColor(255, 205, 115), false, 0.035f, 0, 0.5f);
     if (FireSound) UGameplayStatics::PlaySound2D(this, FireSound, 0.65f, FMath::FRandRange(0.97f, 1.03f));
@@ -197,6 +235,24 @@ void ADemoWeapon::FinishReload()
 }
 float ADemoWeapon::GetReloadProgress() const { return IsReloading() ? FMath::Clamp(static_cast<float>((GetWorld()->GetTimeSeconds() - ReloadStart) / FMath::Max(0.1f, ReloadSeconds)), 0.f, 1.f) : 0.f; }
 float ADemoWeapon::GetHitAge() const { return static_cast<float>(GetWorld()->GetTimeSeconds() - LastHitTime); }
+float ADemoWeapon::GetShotAge() const { return static_cast<float>(GetWorld()->GetTimeSeconds() - LastShotTime); }
+float ADemoWeapon::GetSpreadDegrees() const
+{
+    const auto* Character = Cast<ADemoCharacter>(GetOwner());
+    if (!Character) return .45f;
+    const float Aim = Character->GetAimAlpha();
+    const float Stance = Character->GetCharacterMovement()->IsFalling() ? 1.8f : (Character->IsSliding() ? 1.2f : (Character->bIsCrouched ? .7f : 1.f));
+    return (FMath::Lerp(.36f, .012f, Aim) + Character->GetVelocity().Size2D() * FMath::Lerp(.0004f, .000015f, Aim)
+        + ShotBloom * (1.f - .96f * Aim)) * FMath::Lerp(Stance, 1.f, Aim);
+}
+void ADemoWeapon::RefillAmmo()
+{
+    GetWorldTimerManager().ClearTimer(ReloadTimer);
+    State = EDemoWeaponState::Ready; bTriggerHeld = false;
+    Ammo = MagazineSize; Reserve = FMath::Max(StartingReserve, 600);
+    BurstIndex = 0; ShotBloom = 0;
+    Magazine->SetRelativeLocationAndRotation(FVector(8, 0, -5), FRotator::ZeroRotator);
+}
 void ADemoWeapon::EndPlay(const EEndPlayReason::Type Reason) { GetWorldTimerManager().ClearTimer(ReloadTimer); Super::EndPlay(Reason); }
 
 FTransform ADemoWeapon::GetAimPose() const
