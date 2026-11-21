@@ -10,6 +10,7 @@ class SHOOTER_API UDemoEditorLibrary : public UBlueprintFunctionLibrary
 public:
     UFUNCTION(BlueprintCallable, Category="Demo|Editor") static void MountTemplateResources();
     UFUNCTION(BlueprintCallable, Category="Demo|Editor") static USkeletalMesh* PrepareMannequin();
+    UFUNCTION(BlueprintCallable, Category="Demo|Editor") static USkeletalMesh* PrepareViewmodelArms(bool bRebuild = false);
     /** Each section is (axial X, half width Y, half height Z). */
     UFUNCTION(BlueprintCallable, Category="Demo|Editor") static UStaticMesh* CreateProfileMesh(const FString& Name, const TArray<FVector>& Sections, int32 Sides, float WallThickness, UMaterialInterface* Material);
 };

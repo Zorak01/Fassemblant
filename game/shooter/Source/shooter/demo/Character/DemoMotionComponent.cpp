@@ -52,10 +52,11 @@ void UDemoMotionComponent::Update(float Dt, FVector Velocity, FRotator Heading, 
     GaitAmplitude = FMath::Lerp(GaitAmplitude, Moving * (bCrouched ? 0.4f : 1.f), 1.f - FMath::Exp(-9.f * Dt));
     const float Phase = GaitDistance * PI;
     const float Stable = 1.f - Aim;
-    const float BobSize = FMath::Lerp(1.0f, 2.7f, Sprint) * GaitAmplitude;
-    const float Side = FMath::Sin(Phase) * 0.65f * GaitAmplitude;
-    const float Down = -FMath::Abs(FMath::Sin(Phase)) * BobSize;
-    const float RollTarget = FMath::Clamp(-LocalVelocity.Y * 0.005f - Acceleration.Y * 0.0002f, -3.2f, 3.2f);
+    const float BobSize = FMath::Lerp(0.7f, 1.6f, Sprint) * GaitAmplitude;
+    const float Side = FMath::Sin(Phase) * 0.45f * GaitAmplitude;
+    // Smooth plant/rebound; abs(sin) had a velocity cusp at every footfall.
+    const float Down = -(0.5f - 0.5f * FMath::Cos(2.f * Phase)) * BobSize;
+    const float RollTarget = FMath::Clamp(-LocalVelocity.Y * 0.0035f - Acceleration.Y * 0.00015f, -2.2f, 2.2f);
     Roll = FMath::Lerp(Roll, RollTarget, 1.f - FMath::Exp(-10.f * Dt));
     CameraOffset = FVector(-Inertia.X * 0.08f, Side * 0.45f * Stable, Down * Stable + Landing * FMath::Lerp(1.f, 0.22f, Aim)) * Intensity;
     CameraRotation = FRotator(FMath::Sin(2 * Phase) * 0.22f * GaitAmplitude + Inertia.X * 0.07f,

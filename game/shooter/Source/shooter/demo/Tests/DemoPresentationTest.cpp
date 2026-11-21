@@ -10,8 +10,13 @@
 #include "EngineUtils.h"
 #include "GameFramework/Controller.h"
 #include "Camera/CameraComponent.h"
+#include "Camera/CameraTypes.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/SkeletalMesh.h"
+#include "Materials/MaterialInterface.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/Skeleton.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -40,8 +45,23 @@ void ADemoPresentationTest::Check(const FString& Name, bool bPass, const FString
 void ADemoPresentationTest::Capture(const FString& Name)
 {
     const FString Filename = Directory / (Name + TEXT(".png"));
+    // A shader stall can cross two capture times in one tick. Unreal services
+    // one screenshot per frame, so retain the final requested phase only.
+    if (FScreenshotRequest::IsScreenshotRequested() && !Screenshots.IsEmpty()) Screenshots.Pop();
     Screenshots.Add(Filename);
     FScreenshotRequest::RequestScreenshot(Filename, false, false, false, FIntRect(), true);
+    FString Bones(TEXT("bone,parent,x,y,z,pitch,yaw,roll\n"));
+    auto* Mesh = Character->FirstPersonArms.Get();
+    for (int32 I = 0; I < Mesh->GetNumBones(); ++I)
+    {
+        const FName Bone = Mesh->GetBoneName(I);
+        const FTransform Pose = Mesh->GetSocketTransform(Bone, RTS_Component);
+        const FVector P = Pose.GetLocation();
+        const FRotator R = Pose.Rotator();
+        Bones += FString::Printf(TEXT("%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n"),
+            *Bone.ToString(), *Mesh->GetParentBone(Bone).ToString(), P.X, P.Y, P.Z, R.Pitch, R.Yaw, R.Roll);
+    }
+    FFileHelper::SaveStringToFile(Bones, *(Directory / (Name + TEXT("_bones.csv"))));
 }
 void ADemoPresentationTest::Finish()
 {
@@ -77,22 +97,42 @@ void ADemoPresentationTest::Tick(float Dt)
         const FVector Forward = (Mesh->GetSocketLocation(TEXT("middle_01_l")) - Hand).GetSafeNormal();
         const FVector Across = (Mesh->GetSocketLocation(TEXT("index_01_l")) - Mesh->GetSocketLocation(TEXT("pinky_01_l"))).GetSafeNormal();
         const FVector Normal = FVector::CrossProduct(Forward, Across).GetSafeNormal();
-        const FTransform Target = Weapon->GetHandTarget(true);
-        const float Facing = FVector::DotProduct(Normal, Target.GetUnitAxis(EAxis::Z));
-        Check(TEXT("Reload palm faces grip: ") + Phase, Facing > .95f,
-            FString::Printf(TEXT("normal %.3f"), Facing));
-        Check(TEXT("Reload fingers follow grip: ") + Phase,
-            FVector::DotProduct(Forward, Target.GetUnitAxis(EAxis::X)) > .95f);
         if (Phase == TEXT("Magazine"))
         {
-            // Check physical facing as well as matching a potentially bad target.
-            // For the mirrored left hand, forward cross index-to-pinky points
-            // out of the back of the hand. The palm faces the opposite way.
-            Check(TEXT("Magazine palm faces inward"), FVector::DotProduct(-Normal,
-                Weapon->GetActorQuat().GetAxisY()) > .8f);
-            Check(TEXT("Magazine fingers point upward"), FVector::DotProduct(Forward,
-                Weapon->GetActorQuat().GetAxisZ()) > .8f);
+            const FTransform Target = Weapon->GetHandTarget(true);
+            Check(TEXT("Authored reload palm holds magazine"),
+                FVector::DotProduct(Normal, Target.GetUnitAxis(EAxis::Z)) > .95f);
+            Check(TEXT("Authored reload fingers match magazine contact"),
+                FVector::DotProduct(Forward, Target.GetUnitAxis(EAxis::X)) > .95f);
         }
+        const FVector Elbow = Mesh->GetSocketLocation(TEXT("lowerarm_l"));
+        Check(TEXT("Reload forearm retains length: ") + Phase,
+            FVector::Distance(Hand, Elbow) > 20.f && FVector::Distance(Hand, Elbow) < 35.f);
+        if (Character->ArmsReloadPose)
+        {
+            auto* Clip = Character->ArmsReloadPose.Get();
+            const int32 Bone = Clip->GetSkeleton()->GetReferenceSkeleton().FindBoneIndex(TEXT("hand_l"));
+            FTransform Expected;
+            Clip->GetBoneTransform(Expected, FSkeletonPoseBoneIndex(Bone),
+                FAnimExtractContext(Weapon->GetReloadProgress() * Clip->GetPlayLength(), false), false);
+            const FTransform Actual = Mesh->GetSocketTransform(TEXT("hand_l")).GetRelativeTransform(
+                Mesh->GetSocketTransform(TEXT("lowerarm_l")));
+            const float Error = FMath::RadiansToDegrees(Expected.GetRotation().AngularDistance(Actual.GetRotation()));
+            Check(TEXT("Reload wrist retains authored articulation: ") + Phase, Error < 5.f,
+                FString::Printf(TEXT("%.3f degrees from source wrist"), Error));
+        }
+        FMinimalViewInfo View;
+        Character->CalcCamera(0.f, View);
+        const FTransform CameraWorld(View.Rotation, View.Location);
+        float ClosestHand = BIG_NUMBER;
+        for (FName Bone : {FName(TEXT("hand_l")), FName(TEXT("middle_01_l")), FName(TEXT("index_03_l")), FName(TEXT("thumb_03_l"))})
+        {
+            const FVector Rendered = View.TransformWorldToFirstPerson(Mesh->GetSocketLocation(Bone), false);
+            ClosestHand = FMath::Min(ClosestHand, static_cast<float>(CameraWorld.InverseTransformPosition(Rendered).X));
+        }
+        Check(TEXT("Reload hand clears camera near plane: ") + Phase,
+            ClosestHand > View.GetFinalPerspectiveNearClipPlane() + .3f,
+            FString::Printf(TEXT("closest %.3f cm, near %.3f cm"), ClosestHand, View.GetFinalPerspectiveNearClipPlane()));
         Capture(Phase == TEXT("Magazine") ? TEXT("04_Reload") : TEXT("Reload_") + Phase);
     };
     switch (Stage)
@@ -114,6 +154,15 @@ void ADemoPresentationTest::Tick(float Dt)
         }
         Check(TEXT("Authored carbine and mechanical groups loaded"), bDetailedBody && MechanicalGroups == 5);
         Check(TEXT("Mannequin arms and animation active"), Character->FirstPersonArms->GetSkeletalMeshAsset() && Character->FirstPersonArms->GetAnimInstance());
+        Check(TEXT("Dedicated first-person arm mesh active"), Character->FirstPersonArms->GetSkeletalMeshAsset()
+            && Character->FirstPersonArms->GetSkeletalMeshAsset()->GetName() == TEXT("SK_ViewmodelArms"));
+        bool bOpaqueArms = true;
+        for (int32 I = 0; I < Character->FirstPersonArms->GetNumMaterials(); ++I)
+        {
+            auto* Material = Character->FirstPersonArms->GetMaterial(I);
+            bOpaqueArms &= Material && Material->GetBlendMode() == BLEND_Opaque;
+        }
+        Check(TEXT("Viewmodel materials have no camera proximity cutout"), bOpaqueArms);
         Check(TEXT("Training session director loaded"), ADemoRangeDirector::Find(this) != nullptr);
         Check(TEXT("Layered shot and impact cues assigned"), Weapon->FireSound && Weapon->HitSound && Weapon->KillSound && Weapon->ImpactSound);
         Check(TEXT("Slide audio and footstep variations assigned"), Character->Motion->SlideLoopSound && Character->Motion->FootstepVariations.Num() == 4);
@@ -162,6 +211,9 @@ void ADemoPresentationTest::Tick(float Dt)
         Character->ReloadPressed();
         Next(); break;
     case 6:
+        for (float Time : {.12f, .20f, .40f, .60f, .70f, .80f})
+            if (Elapsed >= Time && Elapsed - Dt < Time)
+                Capture(FString::Printf(TEXT("Reload_Frame_%03d"), FMath::RoundToInt(Time * 100)));
         if (Elapsed >= .25f && Elapsed - Dt < .25f) ReloadPalm(TEXT("Reach"));
         if (Elapsed >= .55f && Elapsed - Dt < .55f) ReloadPalm(TEXT("Extract"));
         if (Elapsed < 0.85f) return;
@@ -170,6 +222,9 @@ void ADemoPresentationTest::Tick(float Dt)
         ReloadPalm(TEXT("Magazine"));
         Next(); break;
     case 7:
+        for (float Time : {.12f, .24f, .48f, .60f, .90f})
+            if (Elapsed >= Time && Elapsed - Dt < Time)
+                Capture(FString::Printf(TEXT("Reload_Frame_%03d"), FMath::RoundToInt((Time + .85f) * 100)));
         if (Elapsed >= .35f && Elapsed - Dt < .35f) ReloadPalm(TEXT("Insert"));
         if (Elapsed >= .75f && Elapsed - Dt < .75f) ReloadPalm(TEXT("Handle"));
         if (Elapsed < 1.4f) return;

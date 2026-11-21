@@ -5,7 +5,7 @@ import runpy
 import unreal
 
 scripts=Path(__file__).resolve().parent
-for name in ['import_carbine_v2.py','create_training_audio.py','create_training_range.py']:
+for name in ['import_carbine_v2.py','prepare_viewmodel_arms.py','create_training_audio.py','create_training_range.py']:
     runpy.run_path(str(scripts/name))
 manifest=scripts.parent/'FirstPersonAssets.json'
 required=json.loads(manifest.read_text(encoding='utf-8'))['assets'] if manifest.exists() else []

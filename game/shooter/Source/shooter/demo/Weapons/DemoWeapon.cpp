@@ -117,7 +117,7 @@ void ADemoWeapon::Tick(float Dt)
     if (IsReloading())
     {
         const float Progress = GetReloadProgress();
-        const float Drop = FMath::Sin(FMath::Clamp((Progress - 0.13f) / 0.62f, 0.f, 1.f) * PI);
+        const float Drop = FMath::Sin(FMath::Clamp((Progress - 0.13f) / 0.39f, 0.f, 1.f) * PI);
         Magazine->SetRelativeLocation(FVector(8 - 3.f * Drop, -9.f * Drop, -5.f - 9.f * Drop));
         Magazine->SetRelativeRotation(FRotator(0, 0, -24.f * Drop));
         BoltPull = FMath::Sin(FMath::Clamp((Progress - 0.78f) / 0.17f, 0.f, 1.f) * PI);
@@ -216,6 +216,7 @@ bool ADemoWeapon::Reload()
 {
     if (IsReloading() || Ammo >= MagazineSize || Reserve <= 0) return false;
     State = EDemoWeaponState::Reloading;
+    bReloadGripCalibrated = false;
     BurstIndex = 0;
     ReloadStart = GetWorld()->GetTimeSeconds();
     bTriggerHeld = false;
@@ -267,6 +268,8 @@ FTransform ADemoWeapon::GetHandTarget(bool bLeft) const
 {
     if (!VisualData) return GetActorTransform();
     if (!bLeft) return VisualData->RightHand * GetActorTransform();
+    if (IsReloading() && bReloadGripCalibrated)
+        return ReloadMagazineGrip * Magazine->GetComponentTransform();
     FTransform Local = VisualData->LeftHand;
     if (IsReloading())
     {
@@ -282,4 +285,23 @@ FTransform ADemoWeapon::GetHandTarget(bool bLeft) const
         Local.Blend(Before, HandlePose, FMath::Clamp(Handle * 1.5f, 0.f, 1.f));
     }
     return Local * GetActorTransform();
+}
+
+void ADemoWeapon::FinalizeReloadMagazine(const FTransform& PalmWorld)
+{
+    if (!IsReloading() || !VisualData) return;
+    const float P = GetReloadProgress();
+    if (!bReloadGripCalibrated && P >= .12f)
+    {
+        // Capture the clip's actual grip as contact begins. An arbitrary Euler
+        // offset rotated the magazine sideways during the authored insertion.
+        ReloadMagazineGrip = PalmWorld.GetRelativeTransform(Magazine->GetComponentTransform());
+        bReloadGripCalibrated = true;
+    }
+    if (!bReloadGripCalibrated) return;
+    const float Contact = FMath::SmoothStep(.12f, .20f, P) * (1.f - FMath::SmoothStep(.48f, .55f, P));
+    const FTransform HeldWorld = ReloadMagazineGrip.Inverse() * PalmWorld;
+    FTransform Pose;
+    Pose.Blend(Magazine->GetComponentTransform(), HeldWorld, Contact);
+    Magazine->SetWorldTransform(Pose);
 }

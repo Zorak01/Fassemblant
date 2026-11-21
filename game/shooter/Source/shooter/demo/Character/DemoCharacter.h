@@ -18,6 +18,7 @@ class SHOOTER_API ADemoCharacter : public ACharacter
 public:
     ADemoCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
     virtual void Tick(float DeltaSeconds) override;
+    virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
     virtual void PawnClientRestart() override;
     virtual void Landed(const FHitResult& Hit) override;
@@ -52,6 +53,7 @@ public:
     UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="55", ClampMax="90")) float ScopeFOV = 78.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="0.08", ClampMax="0.8")) float AimTransitionSeconds = 0.16f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="2", ClampMax="40")) float WeaponResponse = 24.f;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|Camera", meta=(ClampMin="0.1", ClampMax="3")) float ViewNearClip = .3f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Recoil", meta=(ClampMin="0")) float RecoilRecoveryDelay = 0.18f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Recoil", meta=(ClampMin="1")) float RecoilRecoverySpeed = 10.f;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Movement", meta=(ClampMin="100")) float CrouchSpeed = 190.f;
@@ -80,6 +82,8 @@ private:
     void CrouchReleased();
     void CreateInputActions();
     void InstallInputContext();
+    void FinalizeWeaponPose();
+    FDelegateHandle WeaponPoseFinalizedHandle;
     UPROPERTY() TObjectPtr<UInputMappingContext> Mapping;
     UPROPERTY() TObjectPtr<UInputAction> MoveAction;
     UPROPERTY() TObjectPtr<UInputAction> LookAction;

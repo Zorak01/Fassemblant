@@ -10,11 +10,25 @@ tools = unreal.AssetToolsHelpers.get_asset_tools()
 material = runpy.run_path(str(Path(__file__).with_name('create_demo.py')))['material']
 surfaces = {
     'graphite': material('M_V2Anodized', (.035,.046,.057), .8,.28),
-    'ceramic': material('M_V2Ceramic', (.24,.255,.26), .45,.38),
-    'steel': material('M_V2Steel', (.28,.32,.36), .92,.24),
+    'ceramic': material('M_V2Ceramic', (.085,.105,.12), .35,.46),
+    'steel': material('M_V2Steel', (.16,.19,.22), .88,.34),
     'polymer': material('M_V2Polymer', (.013,.018,.021), .05,.7),
     'safety': material('M_V2Safety', (.7,.085,.018), .35,.4),
 }
+# Update the existing surfaces too; create-only helpers otherwise leave the
+# shipped pale receiver and chrome-like rail unchanged on repeat imports.
+edit=unreal.MaterialEditingLibrary
+for key,color,metallic,roughness in [
+    ('ceramic',(.085,.105,.12),.35,.46),('steel',(.16,.19,.22),.88,.34),
+    ('graphite',(.035,.046,.057),.8,.38),('polymer',(.013,.018,.021),.05,.72)]:
+    mat=surfaces[key]
+    node=edit.get_material_property_input_node(mat,unreal.MaterialProperty.MP_BASE_COLOR)
+    node.set_editor_property('constant',unreal.LinearColor(*color))
+    for prop,value in [(unreal.MaterialProperty.MP_METALLIC,metallic),(unreal.MaterialProperty.MP_ROUGHNESS,roughness)]:
+        edit.get_material_property_input_node(mat,prop).set_editor_property('r',value)
+    edit.recompile_material(mat)
+    if not assets.save_loaded_asset(mat,only_if_is_dirty=False):
+        raise RuntimeError('Cannot save carbine material: '+key)
 meshes = {}
 for group in ['Body','Magazine','Bolt','ChargingHandle','Trigger']:
     task = unreal.AssetImportTask()

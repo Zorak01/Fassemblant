@@ -40,6 +40,7 @@ public:
     FTransform GetAimPose() const;
     FVector GetHipPosition() const;
     FTransform GetHandTarget(bool bLeft) const;
+    void FinalizeReloadMagazine(const FTransform& PalmWorld);
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Demo|Appearance") TObjectPtr<UDemoWeaponVisualData> VisualData;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Demo|Weapon", meta=(ClampMin="1")) int32 MagazineSize = 30;
@@ -99,4 +100,6 @@ private:
     double LastShotTime = -100;
     float Flash = 0;
     FTimerHandle ReloadTimer;
+    FTransform ReloadMagazineGrip;
+    bool bReloadGripCalibrated = false;
 };

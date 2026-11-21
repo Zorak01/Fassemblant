@@ -29,8 +29,8 @@ def material(name, color, metal, rough):
     return m
 
 metal = material('Graphite anodized aluminum', (.035,.046,.057), .8,.28)
-coat = material('Warm grey ceramic', (.24,.255,.26), .45,.38)
-steel = material('Machined steel', (.28,.32,.36), .92,.24)
+coat = material('Warm grey ceramic', (.085,.105,.12), .35,.46)
+steel = material('Machined steel', (.16,.19,.22), .88,.34)
 rubber = material('Grip polymer', (.013,.018,.021), .05,.7)
 orange = material('Safety markings', (.7,.085,.018), .35,.4)
 
@@ -79,8 +79,25 @@ def cut(target, tool):
         if tool in objects: objects.remove(tool)
     bpy.data.objects.remove(tool,do_unlink=True)
 
-# Receiver: a compact receiver with a separate lower, dust cover and magwell.
-upper=box('Upper receiver', (1,0,1), (25,4.4,5.4),coat,.32)
+# An eight-sided extrusion with tapered ends replaces the slab-like receiver.
+def receiver():
+    sections=[(-11.5,1.65,2.05,.8),(-8.5,2.2,2.7,1),(10.5,2.2,2.7,1),(13.5,1.95,2.35,.7)]
+    vertices=[]
+    for x,w,h,z in sections:
+        chamfer=.42
+        for y,dz in [(-w+chamfer,-h),(w-chamfer,-h),(w,-h+chamfer),(w,h-chamfer),
+                     (w-chamfer,h),(-w+chamfer,h),(-w,h-chamfer),(-w,-h+chamfer)]:
+            vertices.append((x,y,z+dz))
+    faces=[tuple(reversed(range(8))),tuple(range(24,32))]
+    for ring in range(3):
+        for j in range(8):
+            a=ring*8+j; b=ring*8+(j+1)%8
+            faces.append((a,b,b+8,a+8))
+    mesh=bpy.data.meshes.new('Machined receiver profile'); mesh.from_pydata(vertices,[],faces); mesh.update()
+    obj=bpy.data.objects.new('Faceted upper receiver',mesh); scene.collection.objects.link(obj)
+    return finish(obj,'Faceted upper receiver',coat,bevel=.10)
+
+upper=receiver()
 lower=box('Lower receiver', (-1,0,-2.2),(19,3.8,3.8),metal,.23)
 box('Upper seam', (1,0,3.6),(23,3.9,.35),metal,.08)
 box('Magwell', (7,0,-4.3),(7,4.1,4.7),coat,.3)
@@ -90,6 +107,10 @@ cut(upper,slot)
 box('Port internal shadow',(3,-1.7,1.3),(9,.2,1.8),rubber,.03)
 box('Visible bolt carrier',(3,-2.05,1.3),(7,.25,1.3),steel,.08,'Bolt')
 box('Dust cover hinge',(3,-2.4,.05),(9,.3,.3),metal,.08)
+for side in [-1,1]:
+    cut(upper,box('Rear receiver relief',(-5.7,side*2.15,.9),(5.0,.5,1.6),rubber,.12))
+    box('Inset receiver panel',(-5.7,side*1.94,.9),(4.6,.10,1.24),metal,.08)
+    box('Receiver lower machining seam',(-2.5,side*2.18,-.9),(12,.08,.16),steel,.025)
 
 # Slim free-float handguard with real side vents and a central barrel.
 guard=box('Free float handguard',(25,0,0),(25,4.0,4.6),metal,.25)
@@ -171,7 +192,7 @@ for group, objects in groups.items():
         bpy.context.view_layer.objects.active=objects[0]
         bpy.ops.export_scene.fbx(filepath=str(OUT/(group+'.fbx')),use_selection=True,
             object_types={'MESH'},apply_unit_scale=True,axis_forward='X',axis_up='Z',
-            bake_anim=False,use_mesh_modifiers=True,add_leaf_bones=False)
+            bake_anim=False,use_mesh_modifiers=True,add_leaf_bones=False,mesh_smooth_type='FACE')
 bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'Carbine.blend'))
 print('CARBINE_SOURCE_READY',sum(len(o.data.polygons) for g in groups.values() for o in g),'base polygons',len(groups),'mechanical groups')
 

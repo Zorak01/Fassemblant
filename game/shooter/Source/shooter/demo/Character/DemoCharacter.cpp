@@ -5,6 +5,7 @@
 #include "demo/Character/DemoMovementComponent.h"
 #include "demo/Character/DemoArmsAnimInstance.h"
 #include "Camera/CameraComponent.h"
+#include "Camera/CameraTypes.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "EnhancedInputComponent.h"
@@ -82,16 +83,40 @@ void ADemoCharacter::BeginPlay()
         }
     }
     if (ArmsMesh) FirstPersonArms->SetSkeletalMesh(ArmsMesh);
+    // Manny's full-body post-process rig must not overwrite our final viewmodel
+    // IK. Its corrective rig expects the template animation graph and curves.
+    FirstPersonArms->SetDisablePostProcessBlueprint(true);
+    FirstPersonArms->SetForcedLOD(1);
     FirstPersonArms->HideBoneByName(TEXT("neck_01"), EPhysBodyOp::PBO_None);
     FirstPersonArms->HideBoneByName(TEXT("thigh_l"), EPhysBodyOp::PBO_None);
     FirstPersonArms->HideBoneByName(TEXT("thigh_r"), EPhysBodyOp::PBO_None);
     FirstPersonArms->SetAnimInstanceClass(UDemoArmsAnimInstance::StaticClass());
     FirstPersonArms->AddTickPrerequisiteActor(this);
+    WeaponPoseFinalizedHandle = FirstPersonArms->RegisterOnBoneTransformsFinalizedDelegate(
+        FOnBoneTransformsFinalizedMultiCast::FDelegate::CreateUObject(this, &ThisClass::FinalizeWeaponPose));
     if (auto* PC = Cast<APlayerController>(Controller))
     {
         PC->SetInputMode(FInputModeGameOnly());
         PC->bShowMouseCursor = false;
     }
+}
+
+void ADemoCharacter::CalcCamera(float Dt, FMinimalViewInfo& OutResult)
+{
+    Super::CalcCamera(Dt, OutResult);
+    // At native first-person scale .3, the global 3 cm plane cuts geometry
+    // within 10 authored cm. Scope the close plane to this player's camera.
+    OutResult.PerspectiveNearClipPlane = ViewNearClip;
+}
+
+void ADemoCharacter::FinalizeWeaponPose()
+{
+    if (!Weapon || !Weapon->IsReloading() || !ArmsReloadPose) return;
+    const FVector Hand = FirstPersonArms->GetSocketLocation(TEXT("hand_l"));
+    const FVector Forward = FirstPersonArms->GetSocketLocation(TEXT("middle_01_l")) - Hand;
+    const FVector Across = FirstPersonArms->GetSocketLocation(TEXT("index_01_l"))
+        - FirstPersonArms->GetSocketLocation(TEXT("pinky_01_l"));
+    Weapon->FinalizeReloadMagazine(FTransform(FRotationMatrix::MakeFromXY(Forward, Across).ToQuat(), Hand));
 }
 
 void ADemoCharacter::CreateInputActions()
@@ -321,18 +346,19 @@ void ADemoCharacter::Tick(float Dt)
     if (Weapon)
     {
         const float ReloadPhase = Weapon->GetReloadProgress();
-        const float ReloadMotion = Weapon->IsReloading() ? FMath::Sin(PI * ReloadPhase) : 0.f;
+        const float ReloadMotion = Weapon->IsReloading() ? FMath::SmoothStep(0.f, .15f, ReloadPhase)
+            * (1.f - FMath::SmoothStep(.80f, 1.f, ReloadPhase)) : 0.f;
         const FTransform AimPose = Weapon->GetAimPose();
         FVector Position = FMath::Lerp(Weapon->GetHipPosition(), AimPose.GetLocation(), AimAlpha);
         const float Idle = (1.f - AimAlpha) * (1.f - SprintAlpha) * MotionScale;
         Position += Motion->WeaponOffset + FVector(0, FMath::Sin(Now * 1.7f) * 0.12f, FMath::Sin(Now * 2.1f) * 0.10f) * Idle;
         // Present the magazine work in frame instead of pulling a huge receiver
         // toward the eye while the support hand disappears below the camera.
-        Position += FVector(-6.f * SprintAlpha + 10.f * ReloadMotion, 3.f * SprintAlpha - 6.f * ReloadMotion, -8.f * SprintAlpha + 12.f * ReloadMotion);
+        Position += FVector(-6.f * SprintAlpha, 3.f * SprintAlpha - 4.f * ReloadMotion, -8.f * SprintAlpha + 6.f * ReloadMotion);
         Position += FVector(-2, -1, -3) * Motion->GetSlideAlpha() * (1.f - AimAlpha);
         const float SwayScale = MotionScale * (1.f - AimAlpha * 0.98f);
         const FRotator Rotation = AimPose.Rotator() * AimAlpha + Motion->WeaponRotation + FRotator(-12.f * SprintAlpha + 9.f * ReloadMotion + SmoothedSway.Y * 0.035f * SwayScale,
-            -16.f * SprintAlpha - 14.f * ReloadMotion - SmoothedSway.X * 0.045f * SwayScale, -32.f * ReloadMotion - MoveInput.Y * 0.7f * SwayScale);
+            -16.f * SprintAlpha + 5.f * ReloadMotion - SmoothedSway.X * 0.045f * SwayScale, 28.f * ReloadMotion - MoveInput.Y * 0.7f * SwayScale);
         auto* Root = Weapon->GetRootComponent();
         WeaponPoseLocation = FMath::Lerp(WeaponPoseLocation, Position, Blend(WeaponResponse));
         WeaponPoseRotation = FMath::Lerp(WeaponPoseRotation, Rotation, Blend(WeaponResponse));
@@ -363,6 +389,7 @@ void ADemoCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 }
 void ADemoCharacter::EndPlay(const EEndPlayReason::Type Reason)
 {
+    FirstPersonArms->UnregisterOnBoneTransformsFinalizedDelegate(WeaponPoseFinalizedHandle);
     if (auto* PC = Cast<APlayerController>(Controller))
         if (auto* LP = PC->GetLocalPlayer())
             if (auto* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())

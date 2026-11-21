@@ -27,3 +27,4 @@ data.set_editor_property('left_hand', unreal.Transform(location=unreal.Vector(19
 if not assets.save_loaded_asset(data, only_if_is_dirty=False):
     raise RuntimeError('Cannot save replacement rifle grip calibration.')
 unreal.log('EPIC_TEMPLATE_ARMS_CONFIGURED')
+runpy.run_path(str(Path(__file__).with_name('prepare_viewmodel_arms.py')))

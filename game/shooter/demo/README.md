@@ -129,15 +129,19 @@ timeline as gameplay. Changing a grip/sight in the data asset changes the
 corresponding hand/ADS alignment. The asset can be replaced with authored art
 without changing movement or weapon gameplay.
 
-The active first-person mesh is Epic's original `SKM_Manny_Simple`, with its
-original textured materials, skeleton and rifle idle, fire and reload clips.
+The active first-person mesh is an arms-only derivative of Epic's original
+`SKM_Manny_Simple`, retaining its skinning, textures, skeleton and rifle clips.
+Dedicated opaque material derivatives remove the third-person camera-distance
+cutout that otherwise erases parts of the wrists and forearms near the eye.
+The source mannequin and its materials remain unchanged. Regenerate the viewmodel
+with `demo/Scripts/prepare_viewmodel_arms.py` (`-DemoRebuildArms` rebuilds the geometry).
 Only the 16 selected packages and their hard dependencies are copied from the
 installed UE 5.8 template resources into `Content/Characters`. Head and legs
 are hidden at runtime. No First Person Sample project is used.
 
 `UDemoArmsAnimInstance` samples weapon palm targets on the game thread, then
 evaluates the authored rifle clips, anchors the original firing arm to the
-weapon, then solves support-arm IK using the authored elbow position. Mesh-space
+weapon, then solves support-arm IK using the authored elbow position outside reload. Mesh-space
 additive firing is accumulated over the rifle idle pose. Palm-space calibration
 handles Manny's mirrored bone axes; fingers retain the authored pose. The support
 hand transitions from the foregrip to the moving magazine and charging handle
@@ -174,19 +178,34 @@ fades its quieter loop in/out. To regenerate existing cues deliberately, run
 Normal setup preserves existing audio assets.
 
 The rail has an integral handguard saddle and ends behind its front face.
-The magazine grip faces inward with fingers angled up the magazine. The reload
-presentation moves the weapon forward/up to keep the magazine work in frame.
-Reload IK starts from the holding pose, retaining the gripping fingers and stable
-shoulders instead of imposing the template clip's incompatible magazine gestures.
-Presentation checks cover palm orientation at reach, extraction, transport,
-insertion and charging-handle phases, with separate rendered captures.
+Reload samples the original rifle reload clip, anchoring the full firing palm
+rotation and position to the weapon. Support-arm IK fades out while the clip
+articulates the elbow, wrist and fingers. After bone evaluation, a finalized-pose
+callback attaches the magazine to the animated hand during contact on the same
+frame. The actual pickup grip is calibrated as contact begins; the magazine
+returns to its seated pose before the final weapon manipulation.
+When the third-person clip reaches behind the eye, the complete support-arm
+branch moves forward while preserving its authored forearm, wrist and finger
+articulation. The shoulder stays outside the view, with a continuous upper arm.
+The final wrist rotation relative to the forearm is checked against the source
+clip, alongside visual inspection of the rendered phases.
+
+The player camera overrides its near plane to 0.3 cm. The editor/global setting
+stays at 3 cm; with native first-person scale 0.3, that global plane otherwise
+clips viewmodel geometry within 10 authored centimeters. Presentation checks
+measure rendered hand depth against the active camera near plane and save
+intermediate reload PNGs with bone-transform CSVs alongside the phase captures.
+
+The carbine receiver uses a tapered eight-sided profile, recessed machining
+details and darker, rougher ceramic/metal surfaces. Gait uses a smooth cosine
+plant/rebound with reduced camera amplitude instead of a cusp at every footfall.
 
 ## Verification
 
 The launcher runs `Demo.Gameplay` for ammo/reload, damage/reset, raw input,
 recoil direction/recovery and crouch collision. Its **V / VisualTest** action
 loads the real range in a standalone rendered game, drives ADS/firing/reload,
-sprint/jump/strafe, checks sight and hand/palm alignment, and saves seven PNGs
+sprint/jump/strafe, checks sight and hand/palm alignment, and saves phase PNGs
 plus a JSON report under `Saved/Automation/Presentation`. It uses the renderer
 directly, so desktop screenshot capture is not required. Inspect those images
 alongside the numeric checks when changing animation or art.

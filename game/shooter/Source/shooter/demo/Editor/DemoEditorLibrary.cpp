@@ -38,25 +38,26 @@ void UDemoEditorLibrary::MountTemplateResources()
 #endif
 }
 
-USkeletalMesh* UDemoEditorLibrary::PrepareMannequin()
+static USkeletalMesh* BuildMannequinArms(bool bTemplate, bool bRebuild = false)
 {
 #if WITH_EDITOR
-    const TCHAR* Path = TEXT("/Game/demo/Character/Mannequin/SK_DemoArms");
-    if (auto* Existing = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/demo/Character/Mannequin/SK_DemoArms.SK_DemoArms"), nullptr, LOAD_NoWarn)) return Existing;
+    const TCHAR* Path = bTemplate ? TEXT("/Game/demo/Character/SK_ViewmodelArms") : TEXT("/Game/demo/Character/Mannequin/SK_DemoArms");
+    auto* Existing = LoadObject<USkeletalMesh>(nullptr, *(FString(Path) + TEXT(".") + FPackageName::GetShortName(Path)), nullptr, LOAD_NoWarn);
+    if (Existing && !bRebuild) return Existing;
     FPackageName::RegisterMountPoint(TEXT("/MoverTests/"), FPaths::EnginePluginsDir() / TEXT("Experimental/MoverTests/Content/"));
     FPackageName::RegisterMountPoint(TEXT("/MoverExamples/"), FPaths::EnginePluginsDir() / TEXT("Experimental/MoverExamples/Content/"));
-    auto* Source = LoadObject<USkeletalMesh>(nullptr, TEXT("/MoverTests/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
+    auto* Source = LoadObject<USkeletalMesh>(nullptr, bTemplate ? TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple") : TEXT("/MoverTests/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
     if (!Source || !Source->GetSkeleton()) { UE_LOG(LogTemp, Error, TEXT("Epic Manny source mesh/skeleton is unavailable.")); return nullptr; }
-    auto* Mesh = DuplicateObject<USkeletalMesh>(Source, CreatePackage(Path), TEXT("SK_DemoArms"));
+    auto* Mesh = Existing ? Existing : DuplicateObject<USkeletalMesh>(Source, CreatePackage(Path), *FPackageName::GetShortName(Path));
     Mesh->SetFlags(RF_Public | RF_Standalone);
-    auto* Skeleton = DuplicateObject<USkeleton>(Source->GetSkeleton(), CreatePackage(TEXT("/Game/demo/Character/Mannequin/SK_DemoSkeleton")), TEXT("SK_DemoSkeleton"));
-    Skeleton->SetFlags(RF_Public | RF_Standalone);
+    auto* Skeleton = bTemplate ? Source->GetSkeleton() : DuplicateObject<USkeleton>(Source->GetSkeleton(), CreatePackage(TEXT("/Game/demo/Character/Mannequin/SK_DemoSkeleton")), TEXT("SK_DemoSkeleton"));
+    if (!bTemplate) Skeleton->SetFlags(RF_Public | RF_Standalone);
     Mesh->SetSkeleton(Skeleton);
     Mesh->SetPhysicsAsset(nullptr);
     Mesh->SetPostProcessAnimBlueprint(nullptr);
-    Skeleton->SetPreviewMesh(Mesh);
+    if (!bTemplate) Skeleton->SetPreviewMesh(Mesh);
     auto* Surface = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/demo/Materials/M_Weapon.M_Weapon"));
-    for (auto& Slot : Mesh->GetMaterials()) Slot.MaterialInterface = Surface;
+    if (!bTemplate) for (auto& Slot : Mesh->GetMaterials()) Slot.MaterialInterface = Surface;
     const FReferenceSkeleton& Ref = Mesh->GetRefSkeleton();
     TArray<bool> ArmBones;
     ArmBones.SetNumZeroed(Ref.GetNum());
@@ -64,16 +65,17 @@ USkeletalMesh* UDemoEditorLibrary::PrepareMannequin()
     {
         const FString Name = Ref.GetBoneName(I).ToString();
         const int32 Parent = Ref.GetParentIndex(I);
-        ArmBones[I] = Name == TEXT("upperarm_l") || Name == TEXT("upperarm_r") || (Parent >= 0 && ArmBones[Parent]);
+        const bool bLimbRoot = Name == TEXT("upperarm_l") || Name == TEXT("upperarm_r");
+        ArmBones[I] = bLimbRoot || (Parent >= 0 && ArmBones[Parent]);
     }
     // Remove body/head/legs from every source LOD while retaining the original
     // skeleton, skinning weights, UVs, normals and hand/finger hierarchy.
     int32 Kept = 0;
     for (int32 LOD = 0; LOD < Mesh->GetLODNum(); ++LOD)
     {
-        FMeshDescription* Description = Mesh->GetMeshDescription(LOD);
+        const FMeshDescription* Description = Source->GetMeshDescription(LOD);
         if (!Description) continue;
-        FSkeletalMeshAttributes Attributes(*Description);
+        FSkeletalMeshConstAttributes Attributes(*Description);
         auto Weights = Attributes.GetVertexSkinWeights();
         TSet<FVertexID> Keep;
         for (FVertexID Vertex : Description->Vertices().GetElementIDs())
@@ -140,9 +142,9 @@ USkeletalMesh* UDemoEditorLibrary::PrepareMannequin()
     }
     if (Kept < 100) { UE_LOG(LogTemp, Error, TEXT("Arms extraction found too little geometry (%d triangles)."), Kept); return nullptr; }
     Mesh->Build();
-    FAssetRegistryModule::AssetCreated(Skeleton);
-    FAssetRegistryModule::AssetCreated(Mesh);
-    DemoAssets::Save(Skeleton);
+    if (!bTemplate) FAssetRegistryModule::AssetCreated(Skeleton);
+    if (!Existing) FAssetRegistryModule::AssetCreated(Mesh);
+    if (!bTemplate) DemoAssets::Save(Skeleton);
     DemoAssets::Save(Mesh);
     TArray<FTransform> Global;
     for (int32 I = 0; I < Ref.GetNum(); ++I)
@@ -158,6 +160,9 @@ USkeletalMesh* UDemoEditorLibrary::PrepareMannequin()
     return nullptr;
 #endif
 }
+
+USkeletalMesh* UDemoEditorLibrary::PrepareMannequin() { return BuildMannequinArms(false); }
+USkeletalMesh* UDemoEditorLibrary::PrepareViewmodelArms(bool bRebuild) { return BuildMannequinArms(true, bRebuild); }
 
 UStaticMesh* UDemoEditorLibrary::CreateProfileMesh(const FString& Name, const TArray<FVector>& Sections, int32 Sides, float WallThickness, UMaterialInterface* Material)
 {
