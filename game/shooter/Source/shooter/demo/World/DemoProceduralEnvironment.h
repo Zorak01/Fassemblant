@@ -4,7 +4,7 @@
 #include "demo/World/DemoEnvironmentPalette.h"
 #include "DemoProceduralEnvironment.generated.h"
 
-/** Single-player horizontal chunk streaming. Only the nearby working set lives in memory. */
+/** Single-player sealed interior streaming, including descending decks. Only the nearby working set lives in memory. */
 UCLASS(Blueprintable)
 class SHOOTER_API ADemoProceduralEnvironment : public AActor
 {
@@ -14,8 +14,12 @@ public:
     virtual void Tick(float Dt) override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation") int32 WorldSeed = 1729;
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="4000", ClampMax="12000")) double ChunkSize = 6000;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="4000", ClampMax="12000")) double ChunkSize = 4000;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="2", ClampMax="5")) int32 LoadRadius = 2;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="1200",ClampMax="2000")) double LayerHeight = 1400;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="1",ClampMax="3")) int32 LoadAbove = 1;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="2",ClampMax="4")) int32 LoadBelow = 2;
+    UFUNCTION(BlueprintPure, Category="Demo|Generation") int32 GetCurrentDeck() const { return -LastCenter.Z; }
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="1", ClampMax="8")) int32 ChunksPerUpdate = 2;
     UPROPERTY(EditAnywhere, Category="Demo|Generation") bool bReplaceAuthoredLayout = true;
     UPROPERTY(EditAnywhere, Category="Demo|Generation") bool bSpawnTargets = true;
@@ -29,14 +33,13 @@ protected:
     virtual void BeginPlay() override;
 private:
     void RemoveAuthoredLayout();
-    void QueueAround(FIntPoint Center);
-    void GenerateChunk(FIntPoint Cell);
+    void QueueAround(FIntVector Center);
+    void GenerateChunk(FIntVector Cell);
     void RebaseIfNeeded(FVector Position);
-    UPROPERTY() TObjectPtr<class UStaticMeshComponent> HorizonFloor;
-    UPROPERTY(Transient) TMap<FIntPoint, TObjectPtr<class ADemoEnvironmentChunk>> Chunks;
+    UPROPERTY(Transient) TMap<FIntVector, TObjectPtr<class ADemoEnvironmentChunk>> Chunks;
     UPROPERTY(Transient) TObjectPtr<class APawn> TrackedPawn;
-    TArray<FIntPoint> Pending;
-    FIntPoint LastCenter = FIntPoint::ZeroValue;
+    TArray<FIntVector> Pending;
+    FIntVector LastCenter = FIntVector::ZeroValue;
     bool bInitialized = false;
     bool bPreviousBoundsChecks = true;
 };

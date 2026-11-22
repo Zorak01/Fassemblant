@@ -3,6 +3,8 @@
 #include "demo/Character/DemoGrappleComponent.h"
 #include "demo/Weapons/DemoWeapon.h"
 #include "demo/World/DemoRangeDirector.h"
+#include "demo/World/DemoProceduralEnvironment.h"
+#include "Kismet/GameplayStatics.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -16,6 +18,7 @@ void ADemoHUD::DrawHUD()
     if (!Canvas || !Character || !Character->GetWeapon()) return;
     auto* Weapon = Character->GetWeapon();
     if (!RangeDirector) RangeDirector = ADemoRangeDirector::Find(this);
+    if (!Interior) Interior = Cast<ADemoProceduralEnvironment>(UGameplayStatics::GetActorOfClass(this,ADemoProceduralEnvironment::StaticClass()));
     const float Dt = GetWorld()->GetDeltaSeconds();
     const float S = FMath::Clamp(Canvas->SizeY / 1080.f, .65f, 2.f);
     const float W = Canvas->SizeX, H = Canvas->SizeY, X = W * .5f, Y = H * .5f;
@@ -62,7 +65,7 @@ void ADemoHUD::DrawHUD()
     }
     DrawRect(Dark,28*S,28*S,345*S,113*S);
     DrawRect(Accent,28*S,28*S,3*S,113*S);
-    Text(TEXT("PULSE / TRAINING FACILITY"),White,44*S,40*S,1.15f);
+    Text(Interior ? FString::Printf(TEXT("PULSE / DECK %03d"),Interior->GetCurrentDeck()) : TEXT("PULSE / TRAINING FACILITY"),White,44*S,40*S,1.15f);
     if (RangeDirector)
     {
         const bool Timed = RangeDirector->IsTimed();

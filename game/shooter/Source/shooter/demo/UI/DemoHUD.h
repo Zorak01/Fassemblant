@@ -13,4 +13,5 @@ private:
     float CrosshairGap = 6.f;
     float CrosshairOpacity = 1.f;
     UPROPERTY(Transient) TObjectPtr<class ADemoRangeDirector> RangeDirector;
+    UPROPERTY(Transient) TObjectPtr<class ADemoProceduralEnvironment> Interior;
 };

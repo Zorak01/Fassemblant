@@ -7,7 +7,10 @@ DemoGrapplePhysics::FState DemoGrapplePhysics::Step(FState State,FVector Anchor,
     const FVector Toward = (Anchor-State.Position).GetSafeNormal();
     const FVector RelativeVelocity = State.Velocity-AnchorVelocity;
     const double RadialSpeed = FVector::DotProduct(RelativeVelocity,Toward);
-    const double Pull = FMath::Clamp((Settings.ReelSpeed-RadialSpeed)*Settings.PullResponse,0.,Settings.MaximumPullAcceleration);
+    // Feed gravity into the motor, so an upward grapple reaches the requested
+    // reel speed instead of spending most of its force just resisting gravity.
+    const double Pull = FMath::Clamp((Settings.ReelSpeed-RadialSpeed)*Settings.PullResponse
+        -FVector::DotProduct(Gravity,Toward),0.,Settings.MaximumPullAcceleration);
     const FVector Steering = FVector::VectorPlaneProject(Input.GetClampedToMaxSize(1.),Toward)*Settings.SteeringAcceleration;
     const FVector PreviousVelocity = State.Velocity;
     State.Velocity = (State.Velocity+(Toward*Pull+Steering+Gravity)*Dt).GetClampedToMaxSize(Settings.MaximumSpeed);

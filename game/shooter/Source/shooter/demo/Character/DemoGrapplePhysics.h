@@ -6,11 +6,11 @@ namespace DemoGrapplePhysics
 {
     struct FSettings
     {
-        double ReelSpeed = 1000;
-        double PullResponse = 4.5;
-        double MaximumPullAcceleration = 3800;
-        double SteeringAcceleration = 1800;
-        double MaximumSpeed = 2200;
+        double ReelSpeed = 1900;
+        double PullResponse = 10;
+        double MaximumPullAcceleration = 12000;
+        double SteeringAcceleration = 2400;
+        double MaximumSpeed = 3200;
         double MinimumLength = 130;
         double Slack = 12;
     };

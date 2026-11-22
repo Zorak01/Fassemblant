@@ -32,7 +32,7 @@ void UDemoGrappleComponent::BeginPlay()
     Cable->SetRelativeLocation(LauncherOffset);
     Cable->SetOnlyOwnerSee(true); Cable->SetCastShadow(false);
     Cable->bEnableCollision = false; Cable->bUseSubstepping = true;
-    Cable->NumSegments = 16; Cable->NumSides = 6; Cable->CableWidth = 1.4f;
+    Cable->NumSegments = 16; Cable->NumSides = 4; Cable->CableWidth = 1.4f;
     Cable->SubstepTime = 1.f/120.f; Cable->SolverIterations = 6;
     Cable->CableGravityScale = .25f; Cable->bAttachStart = Cable->bAttachEnd = true;
     Cable->bResetAfterTeleport = true;
@@ -42,7 +42,7 @@ void UDemoGrappleComponent::BeginPlay()
     Cable->RegisterComponent(); Cable->SetVisibility(false); Cable->SetComponentTickEnabled(false);
     Hook = NewObject<UStaticMeshComponent>(Character,TEXT("GrappleHook"));
     Hook->SetupAttachment(Character->GetRootComponent());
-    Hook->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Sphere.Sphere")));
+    Hook->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
     Hook->SetRelativeScale3D(FVector(.045,.045,.045));
     Hook->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Hook->SetOnlyOwnerSee(true); Hook->SetCastShadow(false);

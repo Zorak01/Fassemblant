@@ -13,6 +13,9 @@
 #include "demo/Game/DemoUserSettings.h"
 #include "demo/Character/DemoMovementComponent.h"
 #include "demo/World/DemoRangeDirector.h"
+#include "demo/Character/DemoGrappleComponent.h"
+#include "InputAction.h"
+#include "InputMappingContext.h"
 
 DEFINE_LATENT_AUTOMATION_COMMAND_THREE_PARAMETER(FDemoVerifyReload, FAutomationTestBase*, Test, UWorld*, World, ADemoWeapon*, Weapon);
 bool FDemoVerifyReload::Update()
@@ -95,6 +98,21 @@ bool FDemoControllerFeelTest::RunTest(const FString& Parameters)
 {
     UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
     auto* Character = World->SpawnActor<ADemoCharacter>();
+    // Exercise real input initialization: merely spawning/possessing a pawn in
+    // this test world does not execute the game's ClientRestart startup path.
+    Character->CreateInputActions();
+    TestNotNull(TEXT("Grapple input action initializes alongside its native component"), Character->GrappleAction.Get());
+    for (auto* Action : {Character->MoveAction.Get(), Character->LookAction.Get(), Character->GamepadLookAction.Get(),
+        Character->JumpAction.Get(), Character->AimAction.Get(), Character->SprintAction.Get(),
+        Character->FireAction.Get(), Character->ReloadAction.Get(), Character->CrouchAction.Get(), Character->GrappleAction.Get()})
+    {
+        TestTrue(TEXT("Input actions have their own mapping-context namespace"), Action && Action->GetOuter() == Character->Mapping.Get());
+    }
+    TestTrue(TEXT("Same-named grapple objects have different owners"), Character->GrappleAction->GetFName() == Character->Grapple->GetFName()
+        && Character->GrappleAction->GetOuter() != Character->Grapple->GetOuter());
+    auto* OriginalGrappleAction = Character->GrappleAction.Get();
+    Character->CreateInputActions();
+    TestTrue(TEXT("Repeated input initialization reuses existing actions"), Character->GrappleAction.Get() == OriginalGrappleAction);
     auto* PC = World->SpawnActor<APlayerController>();
     PC->SetAsLocalPlayerController();
     PC->Possess(Character);

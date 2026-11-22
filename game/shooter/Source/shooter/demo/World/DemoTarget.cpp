@@ -12,7 +12,6 @@ ADemoTarget::ADemoTarget()
     TargetRoot = CreateDefaultSubobject<USceneComponent>(TEXT("TargetRoot"));
     SetRootComponent(TargetRoot);
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-    static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TargetBody"));
     Body->SetupAttachment(TargetRoot);
     Body->SetStaticMesh(Cube.Object);
@@ -20,13 +19,13 @@ ADemoTarget::ADemoTarget()
     Body->SetCollisionProfileName(TEXT("BlockAll"));
     Bullseye = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Bullseye"));
     Bullseye->SetupAttachment(TargetRoot);
-    Bullseye->SetStaticMesh(Sphere.Object);
+    Bullseye->SetStaticMesh(Cube.Object);
     Bullseye->SetRelativeLocation(FVector(-11, 0, 8));
     Bullseye->SetRelativeScale3D(FVector(0.045, 0.23, 0.23));
     Bullseye->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Head = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Head"));
     Head->SetupAttachment(TargetRoot);
-    Head->SetStaticMesh(Sphere.Object);
+    Head->SetStaticMesh(Cube.Object);
     Head->SetRelativeLocation(FVector(0, 0, 62));
     Head->SetRelativeScale3D(FVector(.22, .28, .3));
     Head->SetCollisionProfileName(TEXT("BlockAll"));

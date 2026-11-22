@@ -18,50 +18,44 @@ The launcher detects the engine and builds/generates only missing pieces:
 Requires Visual Studio 2022 C++ tools and a Windows SDK. Setup preserves an
 existing range map. Generated binaries and caches are ignored by Git.
 
-## Procedural world
+## Descending interior cells
 
-Normal play now streams a seeded industrial training environment in all four
-horizontal directions. The runtime layout replaces the placed architecture and
-targets; saved maps are not edited. Lighting, player starts and training-session
-statistics remain available. Cells now form identifiable rooms with aligned
-cardinal doorways, exterior connecting lanes and clear routes through their centers.
+Normal play generates a sealed modular interior extending into lower decks.
+There are no outdoor rooms, open-sky variants or cosmetic horizon floor. The
+runtime world removes the old outdoor architecture and sky sources; saved maps
+are preserved. Every cell has an opaque shell, ceiling and connected subrooms.
+All procedural geometry uses the cube mesh, including sloped/diagonal modules.
+Targets and the grapple head also use angular box meshes.
 
-Eight archetypes provide different silhouettes and encounters: open atriums,
-stacked cargo bays with accessible catwalks, reactor chambers, server halls,
-hydroponic grow rooms, foundries, transit depots and movement combat arenas.
-Room interiors vary their orientation and details. Four district themes (arctic,
-industrial, botanical and hazard) rearrange the existing project materials and
-lighting colors; neighboring rooms share a theme within each four-by-four-cell district.
-Covered rooms have ceiling structures, emissive fixtures and a single area light.
-Room labels identify entrances. Cylinder and sphere batches add pipes, reactor
-cores and vegetation forms alongside the modular box geometry.
+Default cells are 40 meters wide with a 14-meter deck spacing. Every cell has a
+real split floor and a switchback descent: two walkable diagonal flights and a
+turning landing. Stair columns keep the same XY orientation across decks, so
+an upper exit matches the next floor even when the room type changes. Ceiling
+openings and enclosed shaft liners keep the route traversable without exposing
+service voids. The HUD and descent signs identify the current/next deck.
 
-Two targets per room face the interior; transit and arena targets patrol along
-the generated corridors. All geometry, labels, lights and owned targets unload
-with their chunk. Geometry is batched by material, shape and collision state;
-decorative fixtures and foliage do not block movement. Cargo ramps preserve
-their rise when cell size changes, and all room types use the same portal height.
+Connections stay opaque and collidable until the neighboring cell exists. When
+an outer cell unloads, surviving neighbors close their seals first. Upper and
+lower shaft caps prevent views into unloaded space. Deck zero is the sealed top;
+new decks continue downward. The working set includes nearby cells above/below
+and streams additional geometry with a per-frame budget. World-origin rebasing
+includes Z, and patrol/grapple anchors follow those shifts.
 
-`ADemoProceduralEnvironment` uses 60-meter cells by default. It prepares nearby
-collision immediately, builds distant cells with a per-frame budget and unloads
-cells beyond the retention radius, including their targets. Identical seed and
-cell coordinates recreate the same geometry after unloading. Origin rebasing
-keeps movement near the coordinate origin during long journeys; target patrol
-anchors are shifted with the world. This is a local single-player system.
+Room identities use interior modules: concourse, storage, angular reactor,
+server hall, fabrication, foundry, transfer and combat cells. Each has alcoves,
+partitions, doorframes, overhead modules and different furniture/cover. There
+are no spheres or cylinders in the generated architecture. `RoomPalette` reuses
+the existing project materials and interior area lights provide illumination.
 
-Tune `WorldSeed`, `ChunkSize`, `LoadRadius`, `ChunksPerUpdate`, materials and target
-class on the procedural environment class. `RoomPalette` supplies the secondary,
-warm/hazard accents, windows and emissive materials without creating new assets.
-`ADemoGameMode` enables it by default;
-set `bInfiniteEnvironment=false` or pass `-DemoFiniteRange` to retain the authored
-facility. The launcher's existing `VisualTest` explicitly selects that finite
-facility because its regression tests use fixed obstacle/target positions.
+Tune `WorldSeed`, `ChunkSize`, `LayerHeight`, `LoadRadius`, `LoadAbove`, `LoadBelow`
+and `ChunksPerUpdate` on `ADemoProceduralEnvironment`. Cells regenerate from their
+XYZ coordinate and seed. This is a local single-player system. Set the game
+mode's `bInfiniteEnvironment=false` or pass `-DemoFiniteRange` to use the retained
+legacy facility; its location-specific presentation tests explicitly do so.
 
-`Demo.Gameplay.Environment.*` contains generation tests for negative coordinates,
-repeatable revisits, seed variation, room/theme coverage, bounded instance counts,
-rotated bounds, target patrol bounds and open connecting streets beneath overheads.
-Those tests require Unreal automation to run; compiling alone does not execute
-them or verify runtime streaming.
+`Demo.Gameplay.Environment.*` covers deck addressing, deterministic regeneration,
+stair alignment, floor openings, walkable ramp angles and bounded box modules.
+Compilation alone does not execute those tests or verify the rendered interior.
 
 ## Controls
 
@@ -87,10 +81,12 @@ them or verify runtime streaming.
 Q launches toward the aimed solid surface and remains attached after the key is
 released. Q again cuts the rope. A short hook flight precedes attachment; valid
 anchors get reticle brackets and a distance/readiness indicator. The initial
-defaults are a 28-meter range, 10 m/s winch speed and a five-second cooldown.
+defaults are a 28-meter range, 19 m/s winch speed and a five-second cooldown.
 These are project tuning values, not a claim of matching Apex's internal values.
 
-The retracting rope preserves tangential velocity. WASD steers in the rope's
+The winch engages with a 4.5 m/s inward impulse, accelerates at up to 120 m/s²,
+and compensates for gravity along the pull direction. Its speed envelope is
+32 m/s. The retracting rope preserves tangential velocity. WASD steers in the rope's
 tangent plane; looking and holding forward also permits vertical swing control.
 A jump within 0.18 seconds of latching adds a hop; a later jump releases. Cutting
 the rope retains velocity into normal air movement. Holding crouch for landing

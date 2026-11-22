@@ -36,14 +36,15 @@ public:
     UPROPERTY(EditAnywhere, Category="Demo|Slide") float SlideSteeringAcceleration = 320.f;
     UPROPERTY(EditAnywhere, Category="Demo|Slide") float SlideMaximumSeconds = 1.5f;
     UPROPERTY(EditAnywhere, Category="Demo|Slide") float SlideCooldown = 0.35f;
-    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="100")) float GrappleReelSpeed = 1000.f;
-    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="0")) float GrappleSteeringAcceleration = 1800.f;
-    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="1")) float GrapplePullResponse = 4.5f;
-    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="100")) float GrapplePullAcceleration = 3800.f;
-    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="100")) float GrappleMaximumSpeed = 2200.f;
-    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="0", ClampMax="1")) float GrappleGravityMultiplier = .55f;
+    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="100")) float GrappleReelSpeed = 1900.f;
+    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="0")) float GrappleSteeringAcceleration = 2400.f;
+    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="1")) float GrapplePullResponse = 10.f;
+    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="100")) float GrapplePullAcceleration = 12000.f;
+    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="100")) float GrappleMaximumSpeed = 3200.f;
+    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="0", ClampMax="1")) float GrappleGravityMultiplier = .45f;
+    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="0")) float GrappleAttachPull = 450.f;
     UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="100")) float GrappleArrivalDistance = 130.f;
-    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="0")) float GrappleAttachLift = 270.f;
+    UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="0")) float GrappleAttachLift = 350.f;
     UPROPERTY(EditAnywhere, Category="Demo|Grapple", meta=(ClampMin="0")) float GrappleJumpWindow = .18f;
 private:
     static constexpr uint8 GrappleMode = 1;

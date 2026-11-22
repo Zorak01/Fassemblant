@@ -80,10 +80,15 @@ bool FDemoGrappleLifecycleTest::RunTest(const FString& Parameters)
     Surface->SetWorldLocation(FVector(1500,0,700)); Surface->RegisterComponent();
     Movement->SetMovementMode(MOVE_Falling);
     Movement->Velocity = FVector(200,800,120);
+    const FVector BeforeAttach=Movement->Velocity;
+    const FVector Toward=(Surface->GetComponentLocation()-Character->GetActorLocation()).GetSafeNormal();
     TestTrue(TEXT("Valid surface starts grapple movement"),Movement->StartGrapple(Surface,FVector::ZeroVector));
     TestTrue(TEXT("Grapple keeps free-air stance"),Movement->IsGrappling() && Movement->IsFalling());
+    TestTrue(TEXT("Attachment engages a decisive inward pull"),FVector::DotProduct(Movement->Velocity,Toward)>=Movement->GrappleAttachPull-.001);
+    TestTrue(TEXT("Attachment preserves existing swing momentum"),FVector::VectorPlaneProject(Movement->Velocity,Toward).Equals(FVector::VectorPlaneProject(BeforeAttach,Toward),.001));
+    const FVector BeforeHop=Movement->Velocity;
     TestTrue(TEXT("An early jump adds latch-hop assistance"),Movement->HandleGrappleJump() && Movement->Velocity.Z > 400);
-    TestTrue(TEXT("Latch hop preserves existing tangential momentum"),Movement->Velocity.X == 200 && Movement->Velocity.Y == 800);
+    TestTrue(TEXT("Latch hop preserves existing tangential momentum"),Movement->Velocity.X == BeforeHop.X && Movement->Velocity.Y == BeforeHop.Y);
     const FVector BeforeRelease = Movement->Velocity;
     TestTrue(TEXT("A subsequent jump releases the grapple"),Movement->HandleGrappleJump() && !Movement->IsGrappling());
     TestTrue(TEXT("Release preserves full velocity"),Movement->Velocity == BeforeRelease);
@@ -92,6 +97,17 @@ bool FDemoGrappleLifecycleTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Fast grapple momentum can enter a slide"),Movement->TryStartSlide());
     TestTrue(TEXT("Landing slide does not discard grapple speed"),Movement->Velocity.Size2D() >= 1900 && Movement->GetMaxSpeed() >= 1900);
     World->DestroyWorld(false);
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDemoGrappleStrongPullTest,"Demo.Gameplay.Grapple.UpwardMotor",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FDemoGrappleStrongPullTest::RunTest(const FString& Parameters)
+{
+    using namespace DemoGrapplePhysics;
+    FSettings Settings;
+    FState State{FVector::ZeroVector,FVector::ZeroVector,3000};
+    for (int32 I=0; I<30; ++I) State=Step(State,FVector(0,0,3000),FVector::ZeroVector,FVector::ZeroVector,FVector(0,0,-1150),1./120,Settings);
+    TestTrue(TEXT("The winch accelerates upward strongly within a quarter second"),State.Velocity.Z>1500);
+    TestTrue(TEXT("Reeling produces real displacement against gravity"),State.Position.Z>220);
     return true;
 }
 #endif

@@ -127,7 +127,9 @@ void ADemoCharacter::CreateInputActions()
     Mapping = NewObject<UInputMappingContext>(this, TEXT("DemoControls"));
     auto Action = [this](FName Name, EInputActionValueType Type)
     {
-        auto* Result = NewObject<UInputAction>(this, Name);
+        // Input assets belong to the mapping context, not the pawn's component
+        // namespace (for example, the native component also named "Grapple").
+        auto* Result = NewObject<UInputAction>(Mapping, Name);
         Result->ValueType = Type;
         return Result;
     };

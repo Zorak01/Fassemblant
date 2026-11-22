@@ -101,6 +101,8 @@ bool UDemoMovementComponent::StartGrapple(UPrimitiveComponent* Anchor,FVector Lo
     GrappleRopeLength = FVector::Distance(UpdatedComponent->GetComponentLocation(),PreviousAnchorPosition)+12.;
     GrappleAttachTime = GetWorld()->GetTimeSeconds(); bGrappleJumpUsed = false;
     if (bGrounded) Velocity.Z = FMath::Max(Velocity.Z,double(GrappleAttachLift));
+    const FVector Toward = (PreviousAnchorPosition-UpdatedComponent->GetComponentLocation()).GetSafeNormal();
+    Velocity += Toward*FMath::Max(0.,double(GrappleAttachPull)-FVector::DotProduct(Velocity,Toward));
     SetMovementMode(MOVE_Custom,GrappleMode);
     return true;
 }

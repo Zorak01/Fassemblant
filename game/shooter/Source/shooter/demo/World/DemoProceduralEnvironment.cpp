@@ -5,6 +5,10 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/TextRenderActor.h"
+#include "Components/SkyAtmosphereComponent.h"
+#include "Engine/SkyLight.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/ExponentialHeightFog.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
@@ -19,18 +23,6 @@ ADemoProceduralEnvironment::ADemoProceduralEnvironment()
     PrimaryActorTick.bCanEverTick = true;
     PrimaryActorTick.TickGroup = TG_PrePhysics;
     SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("EnvironmentRoot")));
-    HorizonFloor = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HorizonFloor"));
-    HorizonFloor->SetupAttachment(RootComponent);
-    static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-    HorizonFloor->SetStaticMesh(Cube.Object);
-    HorizonFloor->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    HorizonFloor->SetMobility(EComponentMobility::Movable);
-    HorizonFloor->SetCastShadow(false);
-    HorizonFloor->SetCanEverAffectNavigation(false);
-    // Cosmetic only: following the player must never become a moving physics
-    // base. Actual collision comes from the immediately prepared nearby chunks.
-    HorizonFloor->SetRelativeScale3D(FVector(10000,10000,.3));
-    HorizonFloor->SetRelativeLocation(FVector(0,0,-18));
     TargetClass = ADemoTarget::StaticClass();
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Floor(TEXT("/Game/demo/Materials/M_TrainingFloor.M_TrainingFloor"));
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Structure(TEXT("/Game/demo/Materials/M_TrainingFrame.M_TrainingFrame"));
@@ -51,114 +43,138 @@ void ADemoProceduralEnvironment::BeginPlay()
     Super::BeginPlay();
     ChunkSize = FMath::Clamp(ChunkSize, 4000.0, 12000.0);
     LoadRadius = FMath::Clamp(LoadRadius, 2, 5);
+    LayerHeight = FMath::Clamp(LayerHeight,1200.,2000.);
+    LoadAbove = FMath::Clamp(LoadAbove,1,3); LoadBelow = FMath::Clamp(LoadBelow,2,4);
     ChunksPerUpdate = FMath::Clamp(ChunksPerUpdate, 1, 8);
     // Preserve the original top-level material overrides as palette defaults.
     if (!RoomPalette.Floor) RoomPalette.Floor = GroundMaterial;
     if (!RoomPalette.Structure) RoomPalette.Structure = StructureMaterial;
     if (!RoomPalette.Accent) RoomPalette.Accent = AccentMaterial;
-    if (RoomPalette.Floor) HorizonFloor->SetMaterial(0, RoomPalette.Floor);
     bPreviousBoundsChecks = GetWorldSettings()->bEnableWorldBoundsChecks;
     GetWorldSettings()->bEnableWorldBoundsChecks = false;
     Tick(0.f);
 }
 void ADemoProceduralEnvironment::RemoveAuthoredLayout()
 {
-    // Only replace placed layout actors in this level. Keep lighting, sky, post
-    // process, player starts, session director and gameplay actors intact.
+    // Keep gameplay/player starts/post processing, but remove the outdoor layout
+    // and sky sources. Interior cells supply their own lighting and enclosure.
     TArray<AActor*> Placed;
     for (TActorIterator<AActor> It(GetWorld()); It; ++It)
     {
         if (It->GetLevel() != GetLevel() || It->GetOwner()) continue;
-        if (It->IsA<AStaticMeshActor>() || It->IsA<ATextRenderActor>() || It->IsA<ADemoTarget>()) Placed.Add(*It);
+        if (It->IsA<AStaticMeshActor>() || It->IsA<ATextRenderActor>() || It->IsA<ADemoTarget>() || It->IsA<ASkyAtmosphere>() || It->IsA<ASkyLight>() || It->IsA<ADirectionalLight>() || It->IsA<AExponentialHeightFog>()) Placed.Add(*It);
     }
     for (auto* Actor : Placed) Actor->Destroy();
 }
-void ADemoProceduralEnvironment::GenerateChunk(FIntPoint Cell)
+
+void ADemoProceduralEnvironment::GenerateChunk(FIntVector Cell)
 {
-    if (Chunks.Contains(Cell)) return;
+    if (Cell.Z > 0 || Chunks.Contains(Cell)) return;
     const FIntVector Origin = GetWorld()->OriginLocation;
-    const FVector Location(double(Cell.X)*ChunkSize-Origin.X, double(Cell.Y)*ChunkSize-Origin.Y, 0);
-    FActorSpawnParameters Params;
-    Params.Owner = this;
+    const FVector Position(double(Cell.X)*ChunkSize-Origin.X,double(Cell.Y)*ChunkSize-Origin.Y,double(Cell.Z)*LayerHeight-Origin.Z);
+    FActorSpawnParameters Params; Params.Owner = this;
     Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-    auto* Chunk = GetWorld()->SpawnActor<ADemoEnvironmentChunk>(Location, FRotator::ZeroRotator, Params);
+    auto* Chunk = GetWorld()->SpawnActor<ADemoEnvironmentChunk>(Position,FRotator::ZeroRotator,Params);
     if (!Chunk) return;
-    Chunk->Generate(WorldSeed, Cell, ChunkSize, bSpawnTargets, TargetClass, RoomPalette);
-    Chunks.Add(Cell, Chunk);
-}
-void ADemoProceduralEnvironment::QueueAround(FIntPoint Center)
-{
-    const int32 RetainRadius = LoadRadius + 1;
-    for (auto It = Chunks.CreateIterator(); It; ++It)
+    Chunk->Generate(WorldSeed,Cell,ChunkSize,LayerHeight,bSpawnTargets,TargetClass,RoomPalette);
+    Chunks.Add(Cell,Chunk);
+    const auto& Offsets = DemoEnvironment::NeighborOffsets();
+    for (int32 I=0; I<Offsets.Num(); ++I)
     {
-        if (FMath::Abs(int64(It.Key().X)-Center.X) > RetainRadius || FMath::Abs(int64(It.Key().Y)-Center.Y) > RetainRadius)
+        if (auto* Other = Chunks.Find(Cell+Offsets[I]); Other && IsValid(*Other))
         {
+            Chunk->SetConnection(I,true);
+            (*Other)->SetConnection(I^1,true);
+        }
+    }
+}
+void ADemoProceduralEnvironment::QueueAround(FIntVector Center)
+{
+    const int32 RetainRadius = LoadRadius+1;
+    const auto& Offsets = DemoEnvironment::NeighborOffsets();
+    for (auto It=Chunks.CreateIterator(); It; ++It)
+    {
+        const auto Delta = It.Key()-Center;
+        if (FMath::Abs(Delta.X)>RetainRadius || FMath::Abs(Delta.Y)>RetainRadius || Delta.Z>LoadAbove+1 || Delta.Z < -LoadBelow-1)
+        {
+            // Seal surviving neighbors before removing any room geometry.
+            for (int32 I=0; I<Offsets.Num(); ++I)
+                if (auto* Other=Chunks.Find(It.Key()+Offsets[I]); Other && IsValid(*Other)) (*Other)->SetConnection(I^1,false);
             if (IsValid(It.Value())) It.Value()->Destroy();
             It.RemoveCurrent();
         }
     }
     Pending.Reset();
-    for (int32 X=-LoadRadius; X<=LoadRadius; ++X) for (int32 Y=-LoadRadius; Y<=LoadRadius; ++Y)
+    for (int32 Z=LoadAbove; Z>=-LoadBelow; --Z)
+        for (int32 X=-LoadRadius; X<=LoadRadius; ++X) for (int32 Y=-LoadRadius; Y<=LoadRadius; ++Y)
+        {
+            const auto Cell = Center+FIntVector(X,Y,Z);
+            if (Cell.Z<=0 && !Chunks.Contains(Cell)) Pending.Add(Cell);
+        }
+    Pending.Sort([Center](FIntVector A,FIntVector B)
     {
-        const FIntPoint Cell = Center + FIntPoint(X,Y);
-        if (!Chunks.Contains(Cell)) Pending.Add(Cell);
-    }
-    Pending.Sort([Center](FIntPoint A, FIntPoint B)
-    {
-        const auto Distance = [Center](FIntPoint P) { return FMath::Square(int64(P.X)-Center.X) + FMath::Square(int64(P.Y)-Center.Y); };
-        const auto DA = Distance(A), DB = Distance(B);
-        return DA != DB ? DA > DB : (A.X != B.X ? A.X > B.X : A.Y > B.Y);
-    }); // Pop nearest first; ties have deterministic ordering.
+        auto Distance = [Center](FIntVector P)
+        {
+            const auto D=P-Center;
+            return (int64(D.X)*D.X+int64(D.Y)*D.Y)*8+int64(D.Z)*D.Z;
+        };
+        const auto DA=Distance(A), DB=Distance(B);
+        if (DA!=DB) return DA>DB;
+        if (A.Z!=B.Z) return A.Z>B.Z;
+        return A.X!=B.X ? A.X>B.X : A.Y>B.Y;
+    });
 }
 void ADemoProceduralEnvironment::RebaseIfNeeded(FVector Position)
 {
-    if (FMath::Max(FMath::Abs(Position.X),FMath::Abs(Position.Y)) < 200000.) return;
-    const auto Origin = GetWorld()->OriginLocation;
-    const int64 X = int64(Origin.X) + FMath::RoundToInt64(Position.X / ChunkSize) * FMath::RoundToInt64(ChunkSize);
-    const int64 Y = int64(Origin.Y) + FMath::RoundToInt64(Position.Y / ChunkSize) * FMath::RoundToInt64(ChunkSize);
-    if (X >= MIN_int32 && X <= MAX_int32 && Y >= MIN_int32 && Y <= MAX_int32)
-        GetWorld()->SetNewWorldOrigin(FIntVector(int32(X),int32(Y),Origin.Z));
+    if (Position.GetAbsMax()<200000.) return;
+    const auto Old=GetWorld()->OriginLocation;
+    const int64 X=int64(Old.X)+FMath::RoundToInt64(Position.X);
+    const int64 Y=int64(Old.Y)+FMath::RoundToInt64(Position.Y);
+    const int64 Z=int64(Old.Z)+FMath::RoundToInt64(Position.Z);
+    if (X>=MIN_int32 && X<=MAX_int32 && Y>=MIN_int32 && Y<=MAX_int32 && Z>=MIN_int32 && Z<=MAX_int32)
+        GetWorld()->SetNewWorldOrigin(FIntVector(int32(X),int32(Y),int32(Z)));
 }
 void ADemoProceduralEnvironment::Tick(float Dt)
 {
     Super::Tick(Dt);
-    auto* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+    auto* Pawn=UGameplayStatics::GetPlayerPawn(this,0);
     if (!Pawn) return;
-    if (TrackedPawn != Pawn)
+    if (TrackedPawn!=Pawn)
     {
         if (TrackedPawn && TrackedPawn->GetMovementComponent()) TrackedPawn->GetMovementComponent()->RemoveTickPrerequisiteActor(this);
-        TrackedPawn = Pawn;
+        TrackedPawn=Pawn;
         if (Pawn->GetMovementComponent()) Pawn->GetMovementComponent()->AddTickPrerequisiteActor(this);
     }
     RebaseIfNeeded(Pawn->GetActorLocation());
-    const FVector Position = Pawn->GetActorLocation();
-    const FVector Absolute = Position + FVector(GetWorld()->OriginLocation);
-    const FIntPoint Center = DemoEnvironment::CellAt(Absolute, ChunkSize);
-    if (!bInitialized || Center != LastCenter) HorizonFloor->SetWorldLocation(FVector(Position.X,Position.Y,-18));
-    if (!bInitialized)
+    float Radius,HalfHeight;
+    Pawn->GetSimpleCollisionCylinder(Radius,HalfHeight);
+    const FVector AbsoluteFeet=Pawn->GetActorLocation()+FVector(GetWorld()->OriginLocation)-FVector(0,0,HalfHeight);
+    const auto Center=DemoEnvironment::CellAt(AbsoluteFeet,ChunkSize,LayerHeight);
+    if (!bInitialized || Center!=LastCenter)
     {
-        // Build collision around the spawn before removing the authored floor.
-        for (int32 X=-1; X<=1; ++X) for (int32 Y=-1; Y<=1; ++Y) GenerateChunk(Center + FIntPoint(X,Y));
-        if (bReplaceAuthoredLayout) RemoveAuthoredLayout();
-        bInitialized = true;
-        LastCenter = Center;
+        // Prepare adjacent decks as well as both sides of horizontal seams before
+        // movement runs. In particular, the next stair exit must already exist.
+        for (int32 Z=-1; Z<=1; ++Z) for (int32 X=-1; X<=1; ++X) for (int32 Y=-1; Y<=1; ++Y)
+            GenerateChunk(Center+FIntVector(X,Y,Z));
+        if (!bInitialized)
+        {
+            if (bReplaceAuthoredLayout) RemoveAuthoredLayout();
+            const auto Origin=GetWorld()->OriginLocation;
+            Pawn->SetActorLocation(FVector((Center.X+.5)*ChunkSize-Origin.X,(Center.Y+.5)*ChunkSize-Origin.Y,
+                Center.Z*LayerHeight-Origin.Z+HalfHeight+5),false,nullptr,ETeleportType::TeleportPhysics);
+            if (Pawn->GetMovementComponent()) Pawn->GetMovementComponent()->StopMovementImmediately();
+            bInitialized=true;
+        }
+        LastCenter=Center;
         QueueAround(Center);
-    }
-    else if (Center != LastCenter)
-    {
-        LastCenter = Center;
-        QueueAround(Center);
-        // Prepare collision on both sides of every nearby seam, including at a
-        // teleport destination. Distant scenery remains budgeted.
-        for (int32 X=-1; X<=1; ++X) for (int32 Y=-1; Y<=1; ++Y) GenerateChunk(Center + FIntPoint(X,Y));
     }
     for (int32 I=0; I<ChunksPerUpdate && !Pending.IsEmpty(); ++I) GenerateChunk(Pending.Pop(EAllowShrinking::No));
 }
 void ADemoProceduralEnvironment::EndPlay(const EEndPlayReason::Type Reason)
 {
     if (TrackedPawn && TrackedPawn->GetMovementComponent()) TrackedPawn->GetMovementComponent()->RemoveTickPrerequisiteActor(this);
-    for (const auto& Entry : Chunks) if (IsValid(Entry.Value)) Entry.Value->Destroy();
+    for (const auto& Entry:Chunks) if (IsValid(Entry.Value)) Entry.Value->Destroy();
     Chunks.Empty(); Pending.Empty();
-    if (GetWorld() && GetWorld()->GetWorldSettings()) GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks = bPreviousBoundsChecks;
+    if (GetWorld() && GetWorld()->GetWorldSettings()) GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks=bPreviousBoundsChecks;
     Super::EndPlay(Reason);
 }
