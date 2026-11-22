@@ -10,4 +10,7 @@ class SHOOTER_API ADemoGameMode : public AGameModeBase
 public:
     ADemoGameMode();
     virtual void StartPlay() override;
+    /** Turn off to keep the authored practice facility for a specific mode. */
+    UPROPERTY(EditDefaultsOnly, Category="Demo|World") bool bInfiniteEnvironment = true;
+    UPROPERTY(EditDefaultsOnly, Category="Demo|World") TSubclassOf<class ADemoProceduralEnvironment> ProceduralEnvironmentClass;
 };

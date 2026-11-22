@@ -18,6 +18,51 @@ The launcher detects the engine and builds/generates only missing pieces:
 Requires Visual Studio 2022 C++ tools and a Windows SDK. Setup preserves an
 existing range map. Generated binaries and caches are ignored by Git.
 
+## Procedural world
+
+Normal play now streams a seeded industrial training environment in all four
+horizontal directions. The runtime layout replaces the placed architecture and
+targets; saved maps are not edited. Lighting, player starts and training-session
+statistics remain available. Cells now form identifiable rooms with aligned
+cardinal doorways, exterior connecting lanes and clear routes through their centers.
+
+Eight archetypes provide different silhouettes and encounters: open atriums,
+stacked cargo bays with accessible catwalks, reactor chambers, server halls,
+hydroponic grow rooms, foundries, transit depots and movement combat arenas.
+Room interiors vary their orientation and details. Four district themes (arctic,
+industrial, botanical and hazard) rearrange the existing project materials and
+lighting colors; neighboring rooms share a theme within each four-by-four-cell district.
+Covered rooms have ceiling structures, emissive fixtures and a single area light.
+Room labels identify entrances. Cylinder and sphere batches add pipes, reactor
+cores and vegetation forms alongside the modular box geometry.
+
+Two targets per room face the interior; transit and arena targets patrol along
+the generated corridors. All geometry, labels, lights and owned targets unload
+with their chunk. Geometry is batched by material, shape and collision state;
+decorative fixtures and foliage do not block movement. Cargo ramps preserve
+their rise when cell size changes, and all room types use the same portal height.
+
+`ADemoProceduralEnvironment` uses 60-meter cells by default. It prepares nearby
+collision immediately, builds distant cells with a per-frame budget and unloads
+cells beyond the retention radius, including their targets. Identical seed and
+cell coordinates recreate the same geometry after unloading. Origin rebasing
+keeps movement near the coordinate origin during long journeys; target patrol
+anchors are shifted with the world. This is a local single-player system.
+
+Tune `WorldSeed`, `ChunkSize`, `LoadRadius`, `ChunksPerUpdate`, materials and target
+class on the procedural environment class. `RoomPalette` supplies the secondary,
+warm/hazard accents, windows and emissive materials without creating new assets.
+`ADemoGameMode` enables it by default;
+set `bInfiniteEnvironment=false` or pass `-DemoFiniteRange` to retain the authored
+facility. The launcher's existing `VisualTest` explicitly selects that finite
+facility because its regression tests use fixed obstacle/target positions.
+
+`Demo.Gameplay.Environment.*` contains generation tests for negative coordinates,
+repeatable revisits, seed variation, room/theme coverage, bounded instance counts,
+rotated bounds, target patrol bounds and open connecting streets beneath overheads.
+Those tests require Unreal automation to run; compiling alone does not execute
+them or verify runtime streaming.
+
 ## Controls
 
 | Action | Keyboard / mouse | Gamepad |
@@ -29,11 +74,45 @@ existing range map. Generated binaries and caches are ignored by Git.
 | Crouch (hold) | Ctrl or C | Right stick click |
 | Slide from sprint | Shift + Ctrl / C | Sprint + crouch |
 | Jump out of slide | Space | A / Cross |
+| Fire/release grapple | Q | Left bumper / L1 |
+| Steer while grappling | WASD + look | Left stick + look |
 | Aim down the physical sight (hold) | Right mouse | Left trigger |
 | Fire (automatic) | Left mouse | Right trigger |
 | Reload | R | X / Square |
 | Refill ammo and reset targets/statistics | E | — |
 | Start/restart 60-second drill | T | — |
+
+## Grapple
+
+Q launches toward the aimed solid surface and remains attached after the key is
+released. Q again cuts the rope. A short hook flight precedes attachment; valid
+anchors get reticle brackets and a distance/readiness indicator. The initial
+defaults are a 28-meter range, 10 m/s winch speed and a five-second cooldown.
+These are project tuning values, not a claim of matching Apex's internal values.
+
+The retracting rope preserves tangential velocity. WASD steers in the rope's
+tangent plane; looking and holding forward also permits vertical swing control.
+A jump within 0.18 seconds of latching adds a hop; a later jump releases. Cutting
+the rope retains velocity into normal air movement. Holding crouch for landing
+can chain into a slide without clamping fast grapple momentum to sprint speed.
+Weapon aiming and firing remain available while attached. There is no forced
+camera turn or interpolation of the player along a straight line.
+
+The hook releases on arrival, timeout, sustained look-away, blocked rope, or an
+anchor becoming invalid/non-collidable. Moving anchors use component-local latch
+coordinates, and cached positions shift during procedural world rebasing. E resets
+the grapple cooldown with the range. Components/actors tagged `NoGrapple` reject
+attachment. Missed shots do not consume the full cooldown.
+
+`UDemoGrappleComponent` owns targeting, flight, the engine CableComponent visual
+and state. `UDemoMovementComponent` integrates a swept, substepped custom movement
+mode. `DemoGrapplePhysics` supplies the pure rope step used by regression tests.
+Pull, steering, gravity, speed, hop and release tuning are exposed on those
+components. Existing project sounds provide launch/latch cues. This remains a
+local single-player ability. `Demo.Gameplay.Grapple.*` covers rope tension, steering,
+integration, origin-shift invariance, release and slide momentum. The grapple was
+compiled without opening Unreal; runtime/collision/cable appearance and precise
+feel still require an in-game tuning pass.
 
 Shift lowers the weapon; aiming exits sprint. Reload blocks shooting, aiming,
 and sprinting. Empty fire starts a reload if reserves remain. Ammo transfers

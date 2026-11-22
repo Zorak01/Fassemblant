@@ -196,7 +196,7 @@ function Invoke-Task([string]$Task) {
     if ($Task -eq 'Generate') { return }
     if ($Task -eq 'VisualTest') {
         $reportRoot = Join-Path $projectRoot ('Saved/Automation/Presentation/Run-' + [guid]::NewGuid().ToString('N'))
-        $arguments = @($project, '/Game/demo/Maps/TrainingFacility', '-game', '-RenderOffscreen', '-unattended', '-ResX=1280', '-ResY=720', '-nosplash', '-nop4', '-NoLiveCoding', '-DemoPresentationTest', "-DemoReportDir=$reportRoot", '-ExecCmds=t.MaxFPS 60,r.MotionBlurQuality 0,r.ScreenPercentage 100')
+        $arguments = @($project, '/Game/demo/Maps/TrainingFacility', '-game', '-RenderOffscreen', '-unattended', '-ResX=1280', '-ResY=720', '-nosplash', '-nop4', '-NoLiveCoding', '-DemoFiniteRange', '-DemoPresentationTest', "-DemoReportDir=$reportRoot", '-ExecCmds=t.MaxFPS 60,r.MotionBlurQuality 0,r.ScreenPercentage 100')
         Invoke-NativeLogged (Join-Path $engine.Root 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') $arguments (Join-Path $logs 'Presentation.log') 'Running rendered play test (GPU required)'
         $report = Read-JsonFile (Join-Path $reportRoot 'report.json')
         if (!$report -or !$report.passed) { throw "Rendered play test failed or did not finish. Report/screenshots: $reportRoot" }

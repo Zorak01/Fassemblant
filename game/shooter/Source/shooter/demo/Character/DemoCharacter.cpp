@@ -3,6 +3,7 @@
 #include "demo/Game/DemoUserSettings.h"
 #include "demo/Character/DemoMotionComponent.h"
 #include "demo/Character/DemoMovementComponent.h"
+#include "demo/Character/DemoGrappleComponent.h"
 #include "demo/Character/DemoArmsAnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/CameraTypes.h"
@@ -32,6 +33,7 @@ ADemoCharacter::ADemoCharacter(const FObjectInitializer& ObjectInitializer)
     Camera->SetFirstPersonFieldOfView(90.f);
     Camera->SetFirstPersonScale(0.3f);
     Motion = CreateDefaultSubobject<UDemoMotionComponent>(TEXT("Motion"));
+    Grapple = CreateDefaultSubobject<UDemoGrappleComponent>(TEXT("Grapple"));
     FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
     FirstPersonArms->SetupAttachment(Camera);
     FirstPersonArms->SetOnlyOwnerSee(true);
@@ -138,6 +140,7 @@ void ADemoCharacter::CreateInputActions()
     FireAction = Action(TEXT("Fire"), EInputActionValueType::Boolean);
     ReloadAction = Action(TEXT("Reload"), EInputActionValueType::Boolean);
     CrouchAction = Action(TEXT("Crouch"), EInputActionValueType::Boolean);
+    GrappleAction = Action(TEXT("Grapple"), EInputActionValueType::Boolean);
     auto MoveKey = [this](FKey Key, bool bSideways, bool bNegative)
     {
         auto& Binding = Mapping->MapKey(MoveAction, Key);
@@ -171,6 +174,8 @@ void ADemoCharacter::CreateInputActions()
     Mapping->MapKey(CrouchAction, EKeys::LeftControl);
     Mapping->MapKey(CrouchAction, EKeys::C);
     Mapping->MapKey(CrouchAction, EKeys::Gamepad_RightThumbstick);
+    Mapping->MapKey(GrappleAction, EKeys::Q);
+    Mapping->MapKey(GrappleAction, EKeys::Gamepad_LeftShoulder);
 }
 
 void ADemoCharacter::InstallInputContext()
@@ -210,6 +215,7 @@ void ADemoCharacter::SetupPlayerInputComponent(UInputComponent* Input)
     Enhanced->BindAction(CrouchAction, ETriggerEvent::Started, this, &ThisClass::CrouchPressed);
     Enhanced->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ThisClass::CrouchReleased);
     Enhanced->BindAction(CrouchAction, ETriggerEvent::Canceled, this, &ThisClass::CrouchReleased);
+    Enhanced->BindAction(GrappleAction, ETriggerEvent::Started, this, &ThisClass::GrapplePressed);
     InstallInputContext();
 }
 
@@ -219,7 +225,7 @@ void ADemoCharacter::Move(const FInputActionValue& Value)
     MoveInput = Value.Get<FVector2D>().GetClampedToMaxSize(1.f);
     if (!Controller) return;
     const FRotator Yaw(0, Controller->GetControlRotation().Yaw, 0);
-    AddMovementInput(Yaw.Vector(), MoveInput.X);
+    AddMovementInput(IsGrappling() ? Controller->GetControlRotation().Vector() : Yaw.Vector(), MoveInput.X);
     AddMovementInput(FRotationMatrix(Yaw).GetUnitAxis(EAxis::Y), MoveInput.Y);
 }
 void ADemoCharacter::MoveStopped() { MoveInput = FVector2D::ZeroVector; }
@@ -245,6 +251,11 @@ void ADemoCharacter::GamepadLook(const FInputActionValue& Value)
 }
 void ADemoCharacter::JumpPressed()
 {
+    if (CastChecked<UDemoMovementComponent>(GetCharacterMovement())->HandleGrappleJump())
+    {
+        bJumpConsumed = true; JumpPressedTime = -100; bJumpHeld = false;
+        return;
+    }
     CastChecked<UDemoMovementComponent>(GetCharacterMovement())->EndSlide(true);
     UnCrouch(); bJumpHeld = true; JumpPressedTime = GetWorld()->GetTimeSeconds();
     if (GetCharacterMovement()->IsMovingOnGround() && !bIsCrouched)
@@ -272,7 +283,9 @@ void ADemoCharacter::CrouchPressed()
 }
 void ADemoCharacter::CrouchReleased() { bCrouchHeld = false; CastChecked<UDemoMovementComponent>(GetCharacterMovement())->EndSlide(); UnCrouch(); }
 bool ADemoCharacter::IsSliding() const { return CastChecked<UDemoMovementComponent>(GetCharacterMovement())->IsSliding(); }
-bool ADemoCharacter::CanFire() const { return !bSprinting && SprintAlpha < 0.15f; }
+bool ADemoCharacter::IsGrappling() const { return CastChecked<UDemoMovementComponent>(GetCharacterMovement())->IsGrappling(); }
+void ADemoCharacter::GrapplePressed() { if (Grapple) Grapple->Toggle(); }
+bool ADemoCharacter::CanFire() const { return IsGrappling() || (!bSprinting && SprintAlpha < 0.15f); }
 void ADemoCharacter::ApplyLookInput(FVector2D Delta)
 {
     // Counter-steering pays down recoverable kick. Recovery never drags the view
@@ -318,7 +331,7 @@ void ADemoCharacter::Tick(float Dt)
     const bool bGrounded = Movement->IsMovingOnGround();
     if (!bGrounded && bCrouchHeld && GetVelocity().Z < 0) Crouch();
     if (bGrounded) { LastGroundedTime = Now; bJumpConsumed = false; }
-    if (!bJumpConsumed && !bIsCrouched && Now - JumpPressedTime <= JumpBufferSeconds && Now - LastGroundedTime <= CoyoteSeconds)
+    if (!IsGrappling() && !bJumpConsumed && !bIsCrouched && Now - JumpPressedTime <= JumpBufferSeconds && Now - LastGroundedTime <= CoyoteSeconds)
     {
         if (bGrounded) Jump();
         else LaunchCharacter(FVector(0, 0, Movement->JumpZVelocity), false, true);
@@ -334,7 +347,8 @@ void ADemoCharacter::Tick(float Dt)
     SprintAlpha = FMath::Lerp(SprintAlpha, bSprinting ? 1.f : 0.f, Blend(6.f));
     Movement->MaxWalkSpeed = FMath::Lerp(FMath::Lerp(WalkSpeed, SprintSpeed, SprintAlpha), AimSpeed, AimAlpha);
     Movement->MaxWalkSpeedCrouched = FMath::Lerp(CrouchSpeed, CrouchSpeed * 0.72f, AimAlpha);
-    Camera->SetFieldOfView(FMath::Lerp(HipFOV + 7.f * SprintAlpha + 4.f * Motion->GetSlideAlpha(), ScopeFOV, AimAlpha));
+    const float GrappleSpeedFOV = IsGrappling() ? FMath::Clamp(float(GetVelocity().Size2D()-720.)*.004f,0.f,6.f) : 0.f;
+    Camera->SetFieldOfView(FMath::Lerp(HipFOV + 7.f * SprintAlpha + 4.f * Motion->GetSlideAlpha()+GrappleSpeedFOV, ScopeFOV, AimAlpha));
     RecoverAimRecoil(Dt);
     Motion->Intensity = MotionScale;
     Motion->Update(Dt, GetVelocity(), GetControlRotation(), bGrounded, SprintAlpha, AimAlpha, bIsCrouched, IsSliding());

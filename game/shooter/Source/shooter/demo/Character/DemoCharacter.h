@@ -27,6 +27,7 @@ public:
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     UFUNCTION(BlueprintPure, Category="Demo") bool IsSprinting() const { return bSprinting; }
     UFUNCTION(BlueprintPure, Category="Demo") bool IsSliding() const;
+    UFUNCTION(BlueprintPure, Category="Demo") bool IsGrappling() const;
     UFUNCTION(BlueprintPure, Category="Demo") float GetAimAlpha() const { return AimAlpha; }
     UFUNCTION(BlueprintPure, Category="Demo") ADemoWeapon* GetWeapon() const { return Weapon; }
     UCameraComponent* GetFirstPersonCamera() const { return Camera; }
@@ -41,6 +42,7 @@ public:
     /** Optional mannequin/arms mesh: set mesh, AnimBP and socket in a derived Blueprint. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Demo|Appearance") TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Demo|Camera") TObjectPtr<UDemoMotionComponent> Motion;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Demo|Movement") TObjectPtr<class UDemoGrappleComponent> Grapple;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<USkeletalMesh> ArmsMesh;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<class UAnimSequence> ArmsIdlePose;
     UPROPERTY(EditDefaultsOnly, Category="Demo|Appearance") TObjectPtr<class UAnimSequence> ArmsReloadPose;
@@ -80,6 +82,7 @@ private:
     void ReloadPressed();
     void CrouchPressed();
     void CrouchReleased();
+    void GrapplePressed();
     void CreateInputActions();
     void InstallInputContext();
     void FinalizeWeaponPose();
@@ -94,6 +97,7 @@ private:
     UPROPERTY() TObjectPtr<UInputAction> FireAction;
     UPROPERTY() TObjectPtr<UInputAction> ReloadAction;
     UPROPERTY() TObjectPtr<UInputAction> CrouchAction;
+    UPROPERTY() TObjectPtr<UInputAction> GrappleAction;
     UPROPERTY(VisibleInstanceOnly, Category="Demo") TObjectPtr<ADemoWeapon> Weapon;
     FVector2D MoveInput = FVector2D::ZeroVector;
     FVector2D LookImpulse = FVector2D::ZeroVector;

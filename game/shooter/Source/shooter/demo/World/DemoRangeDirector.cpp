@@ -1,6 +1,7 @@
 #include "demo/World/DemoRangeDirector.h"
 #include "demo/World/DemoTarget.h"
 #include "demo/Character/DemoCharacter.h"
+#include "demo/Character/DemoGrappleComponent.h"
 #include "demo/Weapons/DemoWeapon.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
@@ -32,7 +33,10 @@ void ADemoRangeDirector::ResetSession()
     SessionStart = GetWorld()->GetTimeSeconds();
     for (TActorIterator<ADemoTarget> It(GetWorld()); It; ++It) It->ResetTarget();
     if (auto* Character = Cast<ADemoCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
+    {
+        if (Character->Grapple) Character->Grapple->ResetGrapple();
         if (auto* Weapon = Character->GetWeapon()) Weapon->RefillAmmo();
+    }
 }
 void ADemoRangeDirector::StartTimedDrill()
 {

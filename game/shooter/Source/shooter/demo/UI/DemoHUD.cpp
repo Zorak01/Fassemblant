@@ -1,5 +1,6 @@
 #include "demo/UI/DemoHUD.h"
 #include "demo/Character/DemoCharacter.h"
+#include "demo/Character/DemoGrappleComponent.h"
 #include "demo/Weapons/DemoWeapon.h"
 #include "demo/World/DemoRangeDirector.h"
 #include "Camera/CameraComponent.h"
@@ -76,10 +77,31 @@ void ADemoHUD::DrawHUD()
     Text(FString::Printf(TEXT("%02d"),Weapon->GetAmmo()),Weapon->GetAmmo()<=5?Orange:White,W-230*S,H-88*S,2.6f);
     Text(FString::Printf(TEXT("/ %03d"),Weapon->GetReserve()),Muted,W-148*S,H-64*S,1.2f);
     const float Speed = Character->GetVelocity().Size2D() * .036f;
-    Text(FString::Printf(TEXT("%02.0f KM/H  %s"),Speed,Character->IsSliding()?TEXT("SLIDING"):Character->IsSprinting()?TEXT("SPRINT"):TEXT("")),Character->IsSliding()?Accent:Muted,X-55*S,H-60*S,1.1f);
+    Text(FString::Printf(TEXT("%02.0f KM/H  %s"),Speed,Character->IsGrappling()?TEXT("GRAPPLE"):Character->IsSliding()?TEXT("SLIDING"):Character->IsSprinting()?TEXT("SPRINT"):TEXT("")),Character->IsGrappling()||Character->IsSliding()?Accent:Muted,X-55*S,H-60*S,1.1f);
+    if (const auto* Grapple = Character->Grapple.Get())
+    {
+        FString Status;
+        const auto State = Grapple->GetState();
+        if (State == EDemoGrappleState::Attached) Status = TEXT("Q RELEASE / WASD SWING");
+        else if (State == EDemoGrappleState::Launching) Status = TEXT("HOOK DEPLOYING");
+        else if (State == EDemoGrappleState::Retracting) Status = TEXT("HOOK RETURNING");
+        else if (Grapple->GetCooldownRemaining() > 0) Status = FString::Printf(TEXT("GRAPPLE  %.1fs"),Grapple->GetCooldownRemaining());
+        else Status = Grapple->HasAimTarget() ? FString::Printf(TEXT("Q GRAPPLE  %.0fm"),FVector::Distance(Character->Camera->GetComponentLocation(),Grapple->GetAimPoint())/100.) : TEXT("Q GRAPPLE / NO ANCHOR");
+        Text(Status,Grapple->HasAimTarget()||Character->IsGrappling()?Accent:Muted,X-105*S,Y+124*S);
+        if (Grapple->HasAimTarget() && Aim < .9f)
+        {
+            // Small corner brackets communicate a valid latch without replacing
+            // the firing reticle or suggesting any aim assistance.
+            for (int32 SX : {-1,1}) for (int32 SY : {-1,1})
+            {
+                DrawLine(X+SX*22*S,Y+SY*18*S,X+SX*22*S,Y+SY*22*S,Accent,S);
+                DrawLine(X+SX*18*S,Y+SY*22*S,X+SX*22*S,Y+SY*22*S,Accent,S);
+            }
+        }
+    }
     DrawRect(Dark,28*S,H-86*S,780*S,58*S);
     Text(TEXT("SHIFT SPRINT + CTRL / C SLIDE   SPACE SLIDE JUMP   RMB AIM   R RELOAD"),White,42*S,H-76*S);
-    Text(TEXT("E REFILL & RESET    T START 60s DRILL    WASD MOVE"),Muted,42*S,H-52*S);
+    Text(TEXT("Q GRAPPLE / RELEASE    E REFILL & RESET    T 60s DRILL    WASD MOVE"),Muted,42*S,H-52*S);
     if (Weapon->IsReloading())
     {
         Text(TEXT("RELOADING"),White,X-43*S,Y+70*S);

@@ -12,6 +12,7 @@ public:
     virtual float TakeDamage(float Amount, const FDamageEvent& Event, AController* EventInstigator, AActor* Causer) override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+    virtual void ApplyWorldOffset(const FVector& Offset, bool bWorldShift) override;
     bool IsActive() const { return Health > 0; }
     bool WasLastHitHeadshot() const { return bHeadshot; }
     void ResetTarget();
@@ -20,6 +21,7 @@ public:
     UPROPERTY(EditAnywhere, Category="Demo|Target", meta=(ClampMin="0.1")) float ResetSeconds = 2.5f;
     UPROPERTY(EditAnywhere, Category="Demo|Target") float StrafeDistance = 0.f;
     UPROPERTY(EditAnywhere, Category="Demo|Target") float StrafeSpeed = 1.f;
+    UPROPERTY(EditAnywhere, Category="Demo|Target") FVector StrafeDirection = FVector(0,1,0);
 protected:
     virtual void BeginPlay() override;
 private:

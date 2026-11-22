@@ -45,6 +45,11 @@ ADemoTarget::ADemoTarget()
 }
 void ADemoTarget::BeginPlay() { Super::BeginPlay(); Home = GetActorLocation(); Health = MaxHealth; }
 FVector ADemoTarget::GetHeadLocation() const { return Head->GetComponentLocation(); }
+void ADemoTarget::ApplyWorldOffset(const FVector& Offset, bool bWorldShift)
+{
+    Super::ApplyWorldOffset(Offset, bWorldShift);
+    Home += Offset;
+}
 float ADemoTarget::TakeDamage(float Amount, const FDamageEvent& Event, AController* EventInstigator, AActor* Causer)
 {
     if (!IsActive() || Amount <= 0) return 0;
@@ -72,7 +77,7 @@ void ADemoTarget::Tick(float Dt)
     Super::Tick(Dt);
     MotionTime += Dt;
     HitPulse = FMath::FInterpTo(HitPulse, 0.f, Dt, 12.f);
-    SetActorLocation(Home + FVector(0, FMath::Sin(MotionTime * StrafeSpeed) * StrafeDistance, 0));
+    SetActorLocation(Home + StrafeDirection.GetSafeNormal2D() * (FMath::Sin(MotionTime * StrafeSpeed) * StrafeDistance));
     Body->SetRelativeRotation(FRotator(0, 0, HitPulse * 5.f));
     HealthBar->SetRelativeScale3D(FVector(.025, FMath::Max(.001f, .6f * Health / MaxHealth), .035));
 }
