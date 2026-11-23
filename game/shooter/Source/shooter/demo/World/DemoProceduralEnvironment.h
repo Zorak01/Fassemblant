@@ -20,6 +20,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="1",ClampMax="3")) int32 LoadAbove = 1;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="2",ClampMax="4")) int32 LoadBelow = 2;
     UFUNCTION(BlueprintPure, Category="Demo|Generation") int32 GetCurrentDeck() const { return -LastCenter.Z; }
+    UFUNCTION(BlueprintPure, Category="Demo|Generation") FString GetCurrentRoomName() const;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Generation", meta=(ClampMin="1", ClampMax="8")) int32 ChunksPerUpdate = 2;
     UPROPERTY(EditAnywhere, Category="Demo|Generation") bool bReplaceAuthoredLayout = true;
     UPROPERTY(EditAnywhere, Category="Demo|Generation") bool bSpawnTargets = true;
@@ -40,6 +41,7 @@ private:
     UPROPERTY(Transient) TObjectPtr<class APawn> TrackedPawn;
     TArray<FIntVector> Pending;
     FIntVector LastCenter = FIntVector::ZeroValue;
+    FString CurrentRoomName;
     bool bInitialized = false;
     bool bPreviousBoundsChecks = true;
 };

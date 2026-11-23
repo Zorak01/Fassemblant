@@ -4,7 +4,29 @@
 /** Pure, order-independent layout generation shared by streaming and tests. */
 namespace DemoEnvironment
 {
-    enum class ERoomType : uint8 { Concourse, CargoBay, Reactor, ServerHall, Fabrication, Foundry, Transit, Arena, Count };
+    enum class ERoomType : uint8
+    {
+        Concourse, CargoBay, Reactor, ServerHall, Fabrication, Foundry, Transit, Arena,
+        Hydroponics, Laboratory, MedBay, Quarters, MessHall, Security, Armory, Archives,
+        PowerStation, Cooling, Maintenance, FreightDepot, ControlRoom, Ventilation, Training, Checkpoint, Count
+    };
+    enum class ERoomForm : uint8 { Hall, Suites, Gallery, Workshop, Diagonal, Pillared, Count };
+    struct FPortal
+    {
+        bool bOpen = false;
+        bool bWide = false;
+    };
+    /** A district graph is generated before geometry. Shared edges have one owner. */
+    struct FCellPlan
+    {
+        ERoomType Room = ERoomType::Concourse;
+        ERoomForm Form = ERoomForm::Hall;
+        FPortal Portals[4]; // west, east, south, north; world axes, independent of kit rotation
+        FIntPoint Chamber; // cells with the same identity share a larger chamber
+        bool bDescent = false;
+        int32 DescentDirection = INDEX_NONE;
+        double CeilingHeight = 900;
+    };
     enum class ETheme : uint8 { Arctic, Industrial, Botanical, Hazard, Count };
     enum class ESurface : uint8 { Structure, Secondary, Accent, Glass, Energy };
     struct FBlock
@@ -30,6 +52,7 @@ namespace DemoEnvironment
     };
     struct FLayout
     {
+        FCellPlan Plan;
         ERoomType Room = ERoomType::Concourse;
         ETheme Theme = ETheme::Arctic;
         bool bCovered = true;
@@ -50,6 +73,7 @@ namespace DemoEnvironment
     FIntVector CellAt(FVector AbsoluteFeet, double ChunkSize, double LayerHeight);
     uint32 CellSeed(int32 WorldSeed, FIntVector Cell);
     FLayout Generate(int32 WorldSeed, FIntVector Cell, double ChunkSize, double LayerHeight = 1400);
+    FCellPlan PlanCell(int32 WorldSeed, FIntVector Cell);
     const TArray<FIntVector>& NeighborOffsets();
     const TCHAR* RoomName(ERoomType Room);
 }

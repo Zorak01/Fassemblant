@@ -45,17 +45,34 @@ const TCHAR* DemoEnvironment::RoomName(ERoomType Room)
     case ERoomType::Foundry: return TEXT("FOUNDRY");
     case ERoomType::Transit: return TEXT("TRANSFER");
     case ERoomType::Arena: return TEXT("COMBAT CELL");
+    case ERoomType::Hydroponics: return TEXT("HYDROPONICS");
+    case ERoomType::Laboratory: return TEXT("LABORATORY");
+    case ERoomType::MedBay: return TEXT("MEDICAL");
+    case ERoomType::Quarters: return TEXT("CREW QUARTERS");
+    case ERoomType::MessHall: return TEXT("MESS HALL");
+    case ERoomType::Security: return TEXT("SECURITY");
+    case ERoomType::Armory: return TEXT("ARMORY");
+    case ERoomType::Archives: return TEXT("ARCHIVES");
+    case ERoomType::PowerStation: return TEXT("POWER STATION");
+    case ERoomType::Cooling: return TEXT("COOLANT EXCHANGE");
+    case ERoomType::Maintenance: return TEXT("MAINTENANCE");
+    case ERoomType::FreightDepot: return TEXT("FREIGHT DEPOT");
+    case ERoomType::ControlRoom: return TEXT("CONTROL ROOM");
+    case ERoomType::Ventilation: return TEXT("VENTILATION");
+    case ERoomType::Training: return TEXT("TRAINING COURSE");
+    case ERoomType::Checkpoint: return TEXT("CHECKPOINT");
     default: return TEXT("FACILITY");
     }
 }
 DemoEnvironment::FLayout DemoEnvironment::Generate(int32 Seed,FIntVector Cell,double Size,double LayerHeight)
 {
     FLayout Layout;
+    Layout.Plan = PlanCell(Seed,Cell);
     Layout.LayerHeight = LayerHeight;
-    Layout.CeilingHeight = 900;
+    Layout.CeilingHeight = FMath::Min(Layout.Plan.CeilingHeight,LayerHeight-200.);
     Layout.bCovered = true;
     FRandomStream Random(int32(CellSeed(Seed,Cell)));
-    Layout.Room = ERoomType(Random.RandRange(0,int32(ERoomType::Count)-1));
+    Layout.Room = Layout.Plan.Room;
     const auto District = CellAt(FVector(Cell.X,Cell.Y,Cell.Z),4.);
     Layout.Theme = ETheme(CellSeed(Seed^0x61c88647,FIntVector(District.X,District.Y,FMath::FloorToInt(double(Cell.Z)/3)))%uint32(ETheme::Count));
     const FLinearColor Colors[] = {FLinearColor(.68f,.82f,1),FLinearColor(1,.86f,.68f),FLinearColor(.78f,1,.84f),FLinearColor(1,.7f,.46f)};
@@ -80,6 +97,12 @@ DemoEnvironment::FLayout DemoEnvironment::Generate(int32 Seed,FIntVector Cell,do
     { Layout.Blocks.Add(MakeBox(P,D,S,FRotator(0,Yaw,0))); };
     auto Slab = [&](double Z,double Thickness,bool Roof)
     {
+        if (!Layout.Plan.bDescent)
+        {
+            const auto Panel=MakeBox(FVector(2000,2000,Z),FVector(4000,4000,Thickness));
+            if (Roof) Layout.Blocks.Add(Panel); else Layout.Floors.Add(Panel);
+            return;
+        }
         const double Right = Roof?1900.:1600.;
         auto Panel = [&](double X0,double X1,double Y0,double Y1)
         {
@@ -94,43 +117,85 @@ DemoEnvironment::FLayout DemoEnvironment::Generate(int32 Seed,FIntVector Cell,do
     Layout.UpperSeal = FTransform(Turn,Point(FVector(1150,1000,Layout.CeilingHeight+25)),FVector(1520*Scale/100,1220*Scale/100,.5));
     Layout.LowerSeal = FTransform(Turn,Point(FVector(1000,1000,-LayerHeight-15)),FVector(1220*Scale/100,1220*Scale/100,.3));
     Layout.DescentSign = FTransform(Turn,Point(FVector(260,1000,260)));
-    // Continuous outer shell: all four doors are sealed by the chunk until their
-    // neighbor is loaded. There are no exterior alleys or open-sky archetypes.
-    for (bool Axis : {false,true}) for (double Edge : {50.,3950.})
+    // Shells obey the district graph in world axes. A closed graph edge is a
+    // continuous wall; a shared chamber removes most of the dividing wall.
+    for (int32 D=0; D<4; ++D)
     {
-        const double FrameEdge=Edge<2000?70.:3930.;
-        for (double Mid : {800.,3200.})
-            Box(Axis?FVector(Edge,Mid,LayerHeight*.5):FVector(Mid,Edge,LayerHeight*.5),Axis?FVector(100,1600,LayerHeight):FVector(1600,100,LayerHeight));
-        Box(Axis?FVector(FrameEdge,2000,(LayerHeight+360)*.5):FVector(2000,FrameEdge,(LayerHeight+360)*.5),Axis?FVector(120,800,LayerHeight-360):FVector(800,120,LayerHeight-360),ESurface::Secondary);
-        for (double Jamb : {1570.,2430.})
-            Box(Axis?FVector(FrameEdge,Jamb,180):FVector(Jamb,FrameEdge,180),Axis?FVector(140,60,360):FVector(60,140,360),ESurface::Accent);
+        const bool Axis=D<2;
+        const double Edge=(D%2==0)?70.:3930.;
+        const auto Portal=Layout.Plan.Portals[D];
+        const double Width=Portal.bWide?2800.:800.;
+        const double Height=Portal.bWide?Layout.CeilingHeight:360.;
+        auto Wall=[&](double Mid,double Span,double Z,double H,ESurface Surface)
+        {
+            FVector P=Axis?FVector(Edge,Mid,Z):FVector(Mid,Edge,Z);
+            FVector S=Axis?FVector(140,Span,H):FVector(Span,140,H);
+            P.X*=Scale; P.Y*=Scale; S.X*=Scale; S.Y*=Scale;
+            Layout.Blocks.Add({P,S,FRotator::ZeroRotator,Surface,true});
+        };
+        if (!Portal.bOpen) { Wall(2000,4000,LayerHeight*.5,LayerHeight,ESurface::Structure); continue; }
+        const double Side=(4000.-Width)*.5;
+        Wall(Side*.5,Side,LayerHeight*.5,LayerHeight,ESurface::Structure);
+        Wall(4000.-Side*.5,Side,LayerHeight*.5,LayerHeight,ESurface::Structure);
+        Wall(2000,Width,(LayerHeight+Height)*.5,LayerHeight-Height,ESurface::Secondary);
+        for (double Jamb:{2000.-Width*.5-30.,2000.+Width*.5+30.})
+            Wall(Jamb,60,Height*.5,Height,ESurface::Accent);
     }
-    // Internal modular partitions, with two normal-height openings per alcove.
+    // A second grammar controls the plan within a room: open halls, segmented
+    // suites, galleries, machine bays, angular corners and structural colonnades.
+    const double Ceiling=Layout.CeilingHeight;
     auto PartitionX = [&](double X,double Y0,double Y1,double Door)
     {
-        Box(FVector(X,(Y0+Door-300)*.5,450),FVector(60,Door-300-Y0,900));
-        Box(FVector(X,(Door+300+Y1)*.5,450),FVector(60,Y1-Door-300,900));
-        Box(FVector(X,Door,630),FVector(75,600,540),ESurface::Secondary);
+        Box(FVector(X,(Y0+Door-300)*.5,Ceiling*.5),FVector(60,Door-300-Y0,Ceiling));
+        Box(FVector(X,(Door+300+Y1)*.5,Ceiling*.5),FVector(60,Y1-Door-300,Ceiling));
+        Box(FVector(X,Door,(Ceiling+360)*.5),FVector(75,600,Ceiling-360),ESurface::Secondary);
     };
     auto PartitionY = [&](double Y,double X0,double X1,double Door)
     {
-        Box(FVector((X0+Door-300)*.5,Y,450),FVector(Door-300-X0,60,900));
-        Box(FVector((Door+300+X1)*.5,Y,450),FVector(X1-Door-300,60,900));
-        Box(FVector(Door,Y,630),FVector(600,75,540),ESurface::Secondary);
+        Box(FVector((X0+Door-300)*.5,Y,Ceiling*.5),FVector(Door-300-X0,60,Ceiling));
+        Box(FVector((Door+300+X1)*.5,Y,Ceiling*.5),FVector(X1-Door-300,60,Ceiling));
+        Box(FVector(Door,Y,(Ceiling+360)*.5),FVector(600,75,Ceiling-360),ESurface::Secondary);
     };
-    PartitionX(2400,100,1600,900); PartitionY(1600,2400,3900,3100);
-    PartitionX(1600,2400,3900,3100); PartitionY(2400,100,1600,900);
-    PartitionX(2400,2400,3900,3100); PartitionY(2400,2400,3900,3100);
+    TArray<FVector> Bays={FVector(3100,900,0),FVector(900,3100,0),FVector(3100,3100,0)};
+    if (!Layout.Plan.bDescent) Bays.Add(FVector(900,900,0));
+    for (const FVector Bay:Bays)
+    {
+        const double InnerX=Bay.X<2000?1600.:2400., InnerY=Bay.Y<2000?1600.:2400.;
+        const double X0=Bay.X<2000?100.:2400., Y0=Bay.Y<2000?100.:2400.;
+        const double DoorX=Bay.X+Random.FRandRange(-120,120), DoorY=Bay.Y+Random.FRandRange(-120,120);
+        switch (Layout.Plan.Form)
+        {
+        case ERoomForm::Suites:
+            PartitionX(InnerX,Y0,Y0+1500,DoorY); PartitionY(InnerY,X0,X0+1500,DoorX); break;
+        case ERoomForm::Gallery:
+            PartitionX(InnerX,Y0,Y0+1500,DoorY);
+            Box(FVector(Bay.X,InnerY,100),FVector(700,60,200),ESurface::Glass); break;
+        case ERoomForm::Workshop:
+            Box(FVector(InnerX,Bay.Y,Ceiling-100),FVector(100,1400,200),ESurface::Accent);
+            for (double Side:{-1.,1.}) Box(FVector(InnerX,Bay.Y+Side*620,(Ceiling-200)*.5),FVector(90,90,Ceiling-200));
+            break;
+        case ERoomForm::Diagonal:
+            Diagonal(FVector(Bay.X+(Bay.X<2000?-450.:450.),Bay.Y+(Bay.Y<2000?-450.:450.),Ceiling*.5),
+                FVector(850,100,Ceiling),ESurface::Secondary,Bay.X==Bay.Y?-45.:45.); break;
+        case ERoomForm::Pillared:
+            for (double Side:{-1.,1.})
+                Box(FVector(Bay.X+Side*530,Bay.Y,Ceiling*.5),FVector(120,160,Ceiling),ESurface::Secondary);
+            Box(FVector(Bay.X,Bay.Y,Ceiling-100),FVector(1250,200,200),ESurface::Accent); break;
+        default: break;
+        }
+    }
     for (double Lane : {1700.,2300.})
     {
         Box(FVector(2000,Lane,1.5),FVector(3800,8,2),ESurface::Accent,false);
         Box(FVector(Lane,2000,1.5),FVector(8,3800,2),ESurface::Accent,false);
     }
     // Straight and diagonal ceiling modules, all opaque box geometry.
-    Box(FVector(2000,2000,790),FVector(3800,100,100),ESurface::Secondary);
-    Box(FVector(2000,2000,730),FVector(80,3800,60),ESurface::Secondary);
+    Box(FVector(2000,2000,Ceiling-60),FVector(3800,100,100),ESurface::Secondary);
+    Box(FVector(2000,2000,Ceiling-120),FVector(80,3800,60),ESurface::Secondary);
     for (double X : {1100.,2900.})
-        Box(FVector(X,2000,680),FVector(700,40,12),ESurface::Energy,false);
+        Box(FVector(X,2000,Ceiling-160),FVector(700,40,12),ESurface::Energy,false);
+    if (Layout.Plan.bDescent)
+    {
     // A real switchback descent, not a visual ramp over an unbroken floor.
     // Line the service space between a lower ceiling and this floor, so looking
     // sideways during descent never exposes the void above neighboring rooms.
@@ -165,8 +230,9 @@ DemoEnvironment::FLayout DemoEnvironment::Generate(int32 Seed,FIntVector Cell,do
     for (double Y : {380.,1620.}) Box(FVector(1000,Y,55),FVector(1200,25,110),ESurface::Accent);
     Box(FVector(1620,1000,55),FVector(25,1200,110),ESurface::Accent);
     Box(FVector(380,1000,55),FVector(25,250,110),ESurface::Accent);
-    // Each archetype furnishes actual alcoves, not an outdoor obstacle field.
-    for (FVector Module : {FVector(3100,900,0),FVector(900,3100,0),FVector(3100,3100,0)})
+    }
+    // Purpose-specific equipment is composed independently of the room plan.
+    for (FVector Module : Bays)
     {
         const double X = Module.X, Y = Module.Y;
         switch (Layout.Room)
@@ -217,7 +283,7 @@ DemoEnvironment::FLayout DemoEnvironment::Generate(int32 Seed,FIntVector Cell,do
             Box(FVector(X,Y,75),FVector(850,700,150),ESurface::Secondary);
             Box(FVector(X,Y,154),FVector(760,610,8),ESurface::Energy,false);
             for (int32 I=0; I<5; ++I) Box(FVector(X-340+I*170,Y,170),FVector(25,700,25));
-            Box(FVector(X,Y,650),FVector(950,120,120),ESurface::Accent);
+            Box(FVector(X,Y,Ceiling-100),FVector(950,120,120),ESurface::Accent);
             break;
         case ERoomType::Transit:
             Box(FVector(X,Y,160),FVector(800,600,320),ESurface::Secondary);
@@ -230,14 +296,182 @@ DemoEnvironment::FLayout DemoEnvironment::Generate(int32 Seed,FIntVector Cell,do
             for (double Side : {-1.,1.}) Box(FVector(X-330,Y+Side*240,130),FVector(60,60,260));
             Box(FVector(X-330,Y,185),FVector(80,540,55));
             break;
+        case ERoomType::Hydroponics:
+            for (double Side:{-1.,1.})
+            {
+                Box(FVector(X+Side*280,Y,65),FVector(330,900,130),ESurface::Secondary);
+                for (int32 I=0; I<5; ++I)
+                {
+                    const double H=Random.FRandRange(100,250);
+                    Box(FVector(X+Side*280,Y-350+I*175,130+H*.5),FVector(160,90,H),ESurface::Accent);
+                    Diagonal(FVector(X+Side*280,Y-350+I*175,200+H*.3),FVector(230,130,35),ESurface::Secondary,Side*35);
+                }
+                Box(FVector(X+Side*280,Y,Ceiling-160),FVector(30,950,20),ESurface::Energy,false);
+            }
+            break;
+        case ERoomType::Laboratory:
+            for (double Side:{-1.,1.})
+            {
+                Box(FVector(X+Side*320,Y,95),FVector(250,900,190),ESurface::Secondary);
+                Box(FVector(X+Side*320,Y,200),FVector(280,940,20),ESurface::Accent);
+                for (double DY:{-250.,250.})
+                {
+                    Box(FVector(X+Side*320,Y+DY,290),FVector(160,180,160),ESurface::Glass);
+                    Box(FVector(X+Side*320,Y+DY,380),FVector(190,210,20));
+                    Box(FVector(X+Side*320,Y+DY,280),FVector(55,60,110),ESurface::Energy,false);
+                }
+            }
+            break;
+        case ERoomType::MedBay:
+            for (double DY:{-300.,300.})
+            {
+                Box(FVector(X,Y+DY,65),FVector(700,260,130),ESurface::Secondary);
+                Box(FVector(X,Y+DY,140),FVector(650,240,20),ESurface::Accent);
+                Box(FVector(X+330,Y+DY,210),FVector(40,280,170));
+                Box(FVector(X+420,Y+DY,310),FVector(100,140,100),ESurface::Glass);
+            }
+            Box(FVector(X-470,Y,220),FVector(100,140,60),ESurface::Energy,false);
+            Box(FVector(X-470,Y,220),FVector(100,60,140),ESurface::Energy,false);
+            break;
+        case ERoomType::Quarters:
+            for (double Side:{-1.,1.})
+            {
+                for (double Z:{80.,280.})
+                    Box(FVector(X+Side*340,Y,Z),FVector(240,850,55),ESurface::Secondary);
+                for (double DY:{-440.,440.})
+                    Box(FVector(X+Side*340,Y+DY,200),FVector(260,30,400));
+                Box(FVector(X+Side*340,Y+250,325),FVector(220,170,35),ESurface::Accent);
+            }
+            Box(FVector(X,Y+500,150),FVector(180,160,300),ESurface::Secondary);
+            break;
+        case ERoomType::MessHall:
+            for (double DY:{-300.,300.})
+            {
+                Box(FVector(X,Y+DY,120),FVector(850,220,25),ESurface::Secondary);
+                Box(FVector(X,Y+DY,55),FVector(80,160,110));
+                for (double Side:{-1.,1.})
+                    Box(FVector(X,Y+DY+Side*150,65),FVector(800,65,50),ESurface::Accent);
+                for (int32 I=0; I<3; ++I)
+                    Box(FVector(X-260+I*260,Y+DY,145),FVector(65,100,25),ESurface::Accent,false);
+            }
+            break;
+        case ERoomType::Security:
+            Box(FVector(X,Y,90),FVector(900,350,180),ESurface::Secondary);
+            for (double DX:{-300.,0.,300.})
+            {
+                Box(FVector(X+DX,Y+100,260),FVector(230,45,150));
+                Box(FVector(X+DX,Y+72,260),FVector(190,8,110),ESurface::Energy,false);
+            }
+            Box(FVector(X,Y+400,220),FVector(900,80,440),ESurface::Glass);
+            break;
+        case ERoomType::Armory:
+            for (double Side:{-1.,1.})
+            {
+                Box(FVector(X+Side*420,Y,210),FVector(140,1000,420),ESurface::Secondary);
+                for (int32 I=0; I<6; ++I)
+                {
+                    Box(FVector(X+Side*330,Y-400+I*160,240),FVector(70,35,200));
+                    Diagonal(FVector(X+Side*300,Y-400+I*160,170),FVector(130,35,55),ESurface::Accent,Side*20);
+                }
+            }
+            Box(FVector(X,Y,65),FVector(250,600,130),ESurface::Secondary);
+            break;
+        case ERoomType::Archives:
+            for (double DX:{-400.,0.,400.})
+            {
+                for (double DY:{-350.,350.}) Box(FVector(X+DX,Y+DY,240),FVector(35,35,480));
+                for (double Z:{60.,200.,340.,480.})
+                {
+                    Box(FVector(X+DX,Y,Z),FVector(210,740,20),ESurface::Secondary);
+                    for (int32 I=0; I<4; ++I)
+                        Box(FVector(X+DX,Y-270+I*180,Z+60),FVector(150,140,100),I%2?ESurface::Accent:ESurface::Structure);
+                }
+            }
+            break;
+        case ERoomType::PowerStation:
+            for (double DX:{-340.,340.})
+            {
+                Box(FVector(X+DX,Y,220),FVector(240,850,440),ESurface::Secondary);
+                for (int32 I=0; I<5; ++I)
+                {
+                    Box(FVector(X+DX,Y-320+I*160,220),FVector(270,35,360));
+                    Box(FVector(X+DX,Y-320+I*160,450),FVector(180,70,15),ESurface::Energy,false);
+                }
+            }
+            Box(FVector(X,Y,Ceiling-90),FVector(1000,180,100),ESurface::Accent);
+            break;
+        case ERoomType::Cooling:
+            for (double DY:{-350.,350.})
+            {
+                Box(FVector(X,Y+DY,170),FVector(900,200,340),ESurface::Secondary);
+                for (int32 I=0; I<8; ++I)
+                    Box(FVector(X-380+I*110,Y+DY,180),FVector(30,230,280),ESurface::Accent);
+            }
+            // Rectangular ductwork; the kit never introduces round pipes.
+            Box(FVector(X,Y,Ceiling-120),FVector(1000,260,180));
+            for (double DX:{-400.,400.}) Box(FVector(X+DX,Y+350,Ceiling*.5),FVector(110,110,Ceiling));
+            break;
+        case ERoomType::Maintenance:
+            Box(FVector(X,Y+300,80),FVector(900,280,160),ESurface::Secondary);
+            Box(FVector(X,Y+430,280),FVector(900,40,250));
+            for (int32 I=0; I<6; ++I)
+                Box(FVector(X-350+I*140,Y+400,280),FVector(35,35,Random.FRandRange(70,160)),ESurface::Accent);
+            Box(FVector(X-300,Y-250,100),FVector(240,320,200),ESurface::Accent);
+            Box(FVector(X+300,Y-250,60),FVector(300,350,120),ESurface::Secondary);
+            break;
+        case ERoomType::FreightDepot:
+            Box(FVector(X,Y,30),FVector(1050,850,60),ESurface::Secondary);
+            for (int32 I=0; I<4; ++I)
+                Box(FVector(X-390+I*260,Y,75),FVector(80,900,45),ESurface::Accent);
+            Box(FVector(X,Y+170,230),FVector(650,400,280));
+            Box(FVector(X,Y+170,380),FVector(670,420,20),ESurface::Accent);
+            for (double DX:{-500.,500.}) Box(FVector(X+DX,Y,Ceiling*.5),FVector(80,100,Ceiling),ESurface::Secondary);
+            Box(FVector(X,Y,Ceiling-60),FVector(1100,100,100),ESurface::Accent);
+            break;
+        case ERoomType::ControlRoom:
+            for (double DX:{-340.,0.,340.})
+            {
+                Diagonal(FVector(X+DX,Y,130),FVector(280,350,160),ESurface::Secondary,15);
+                Box(FVector(X+DX,Y+350,350),FVector(310,60,270));
+                Box(FVector(X+DX,Y+310,350),FVector(270,15,220),ESurface::Energy,false);
+            }
+            Box(FVector(X,Y-330,60),FVector(750,160,120),ESurface::Accent);
+            break;
+        case ERoomType::Ventilation:
+            for (double Side:{-1.,1.})
+            {
+                Box(FVector(X+Side*360,Y,Ceiling*.5),FVector(300,800,Ceiling),ESurface::Secondary);
+                for (int32 I=0; I<7; ++I)
+                    Box(FVector(X+Side*195,Y,80+I*70),FVector(25,680,20),ESurface::Accent);
+            }
+            Box(FVector(X,Y,Ceiling-80),FVector(600,700,120));
+            break;
+        case ERoomType::Training:
+            for (int32 I=0; I<3; ++I)
+            {
+                const double H=80+I*65;
+                Box(FVector(X-340+I*340,Y+(I%2?260.:-260.),H*.5),FVector(240,400,H),ESurface::Secondary);
+                Box(FVector(X-340+I*340,Y+(I%2?260.:-260.),H+3),FVector(245,405,6),ESurface::Accent);
+            }
+            Diagonal(FVector(X,Y,420),FVector(950,70,70),ESurface::Accent,-30);
+            break;
+        case ERoomType::Checkpoint:
+            for (double DX:{-400.,400.})
+            {
+                Box(FVector(X+DX,Y,200),FVector(180,650,400),ESurface::Secondary);
+                Box(FVector(X+DX,Y-335,260),FVector(120,15,160),ESurface::Glass);
+            }
+            Box(FVector(X,Y,460),FVector(1000,180,120),ESurface::Accent);
+            for (double DY:{-420.,420.}) Box(FVector(X,Y+DY,3),FVector(900,80,5),ESurface::Accent,false);
+            break;
         default: break;
         }
     }
-    for (FVector P : {FVector(2000,900,125),FVector(3100,2000,125)})
+    for (FVector P : {FVector(2250,900,125),FVector(3100,2250,125)})
     {
         const FVector Position = Point(P);
         const FVector ToCenter = Point(FVector(2000,2000,125))-Position;
-        const FVector Direction = Turn.RotateVector(P.X == 2000?FVector(0,1,0):FVector(1,0,0));
+        const FVector Direction = Turn.RotateVector(P.Y == 900?FVector(0,1,0):FVector(1,0,0));
         const bool Moving = Layout.Room == ERoomType::Arena || Layout.Room == ERoomType::Transit;
         Layout.Targets.Add({Position,FRotator(0,ToCenter.Rotation().Yaw+180,0),Direction,Moving?float(170*Scale):0.f,float(Random.FRandRange(.8,1.3))});
     }

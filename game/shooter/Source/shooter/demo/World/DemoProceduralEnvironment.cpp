@@ -67,6 +67,11 @@ void ADemoProceduralEnvironment::RemoveAuthoredLayout()
     for (auto* Actor : Placed) Actor->Destroy();
 }
 
+FString ADemoProceduralEnvironment::GetCurrentRoomName() const
+{
+    return CurrentRoomName;
+}
+
 void ADemoProceduralEnvironment::GenerateChunk(FIntVector Cell)
 {
     if (Cell.Z > 0 || Chunks.Contains(Cell)) return;
@@ -166,6 +171,7 @@ void ADemoProceduralEnvironment::Tick(float Dt)
             bInitialized=true;
         }
         LastCenter=Center;
+        CurrentRoomName=DemoEnvironment::RoomName(DemoEnvironment::PlanCell(WorldSeed,Center).Room);
         QueueAround(Center);
     }
     for (int32 I=0; I<ChunksPerUpdate && !Pending.IsEmpty(); ++I) GenerateChunk(Pending.Pop(EAllowShrinking::No));

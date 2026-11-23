@@ -15,7 +15,13 @@ levels = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 def material(name, color, metallic=0.0, roughness=0.6, emission=0.0):
     path = ROOT + "/Materials/" + name
     if assets.does_asset_exist(path):
-        return unreal.load_asset(path)
+        mat = unreal.load_asset(path)
+        usage = unreal.MaterialUsage.MATUSAGE_INSTANCED_STATIC_MESHES
+        if not unreal.MaterialEditingLibrary.has_material_usage(mat, usage):
+            unreal.MaterialEditingLibrary.set_base_material_usage(mat, usage)
+            unreal.MaterialEditingLibrary.recompile_material(mat)
+            assets.save_loaded_asset(mat)
+        return mat
     mat = asset_tools.create_asset(name, ROOT + "/Materials", unreal.Material, unreal.MaterialFactoryNew())
     edit = unreal.MaterialEditingLibrary
     rgb = edit.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector, -400, 0)
@@ -29,6 +35,7 @@ def material(name, color, metallic=0.0, roughness=0.6, emission=0.0):
         glow = edit.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector, -400, 300)
         glow.set_editor_property("constant", unreal.LinearColor(*(c * emission for c in color)))
         edit.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    edit.set_base_material_usage(mat, unreal.MaterialUsage.MATUSAGE_INSTANCED_STATIC_MESHES)
     edit.recompile_material(mat)
     assets.save_loaded_asset(mat)
     return mat

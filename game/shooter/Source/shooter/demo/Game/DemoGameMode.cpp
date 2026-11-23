@@ -3,6 +3,7 @@
 #include "demo/UI/DemoHUD.h"
 #include "demo/Game/DemoPlayerController.h"
 #include "demo/Tests/DemoPresentationTest.h"
+#include "demo/Tests/DemoEnvironmentPlayTest.h"
 #include "demo/World/DemoProceduralEnvironment.h"
 #include "EngineUtils.h"
 #include "Misc/CommandLine.h"
@@ -27,5 +28,6 @@ void ADemoGameMode::StartPlay()
     }
 #if !UE_BUILD_SHIPPING
     if (FParse::Param(FCommandLine::Get(), TEXT("DemoPresentationTest"))) GetWorld()->SpawnActor<ADemoPresentationTest>();
+    if (FParse::Param(FCommandLine::Get(), TEXT("DemoEnvironmentTest"))) GetWorld()->SpawnActor<ADemoEnvironmentPlayTest>();
 #endif
 }

@@ -65,7 +65,7 @@ void ADemoHUD::DrawHUD()
     }
     DrawRect(Dark,28*S,28*S,345*S,113*S);
     DrawRect(Accent,28*S,28*S,3*S,113*S);
-    Text(Interior ? FString::Printf(TEXT("PULSE / DECK %03d"),Interior->GetCurrentDeck()) : TEXT("PULSE / TRAINING FACILITY"),White,44*S,40*S,1.15f);
+    Text(Interior ? FString::Printf(TEXT("%s / DECK %03d"),*Interior->GetCurrentRoomName(),Interior->GetCurrentDeck()) : TEXT("PULSE / TRAINING FACILITY"),White,44*S,40*S,1.15f);
     if (RangeDirector)
     {
         const bool Timed = RangeDirector->IsTimed();

@@ -27,12 +27,21 @@ are preserved. Every cell has an opaque shell, ceiling and connected subrooms.
 All procedural geometry uses the cube mesh, including sloped/diagonal modules.
 Targets and the grapple head also use angular box meshes.
 
-Default cells are 40 meters wide with a 14-meter deck spacing. Every cell has a
-real split floor and a switchback descent: two walkable diagonal flights and a
-turning landing. Stair columns keep the same XY orientation across decks, so
-an upper exit matches the next floor even when the room type changes. Ceiling
-openings and enclosed shaft liners keep the route traversable without exposing
-service voids. The HUD and descent signs identify the current/next deck.
+Default cells are 40 meters wide with a 14-meter deck spacing. A deterministic
+4x4 district graph starts with a randomized spanning tree, adds loops and connects
+to neighboring districts through shared boundary gates. Closed graph edges are
+solid walls. Routes include side rooms, elbows, junctions and branching wings.
+Each district combines a 2x2 chamber, up to three two-cell wings and standalone
+rooms. Wide openings join cells in one chamber; they share purpose, spatial
+grammar and ceiling height. Geometry still streams in bounded cells.
+
+Three dedicated descent columns per district have split floors and switchback
+stairs: two walkable diagonal flights and a turning landing. Other rooms have
+uninterrupted floors. Stair positions and orientation persist across decks.
+Ceiling openings and enclosed shaft liners prevent views into service voids.
+Door signs name the destination room; DOWN ROUTE labels follow the shortest
+connected path to stairs, including turns around closed walls. The HUD identifies
+the current room and deck.
 
 Connections stay opaque and collidable until the neighboring cell exists. When
 an outer cell unloads, surviving neighbors close their seals first. Upper and
@@ -41,11 +50,17 @@ new decks continue downward. The working set includes nearby cells above/below
 and streams additional geometry with a per-frame budget. World-origin rebasing
 includes Z, and patrol/grapple anchors follow those shifts.
 
-Room identities use interior modules: concourse, storage, angular reactor,
-server hall, fabrication, foundry, transfer and combat cells. Each has alcoves,
-partitions, doorframes, overhead modules and different furniture/cover. There
-are no spheres or cylinders in the generated architecture. `RoomPalette` reuses
-the existing project materials and interior area lights provide illumination.
+There are 24 room purposes: concourse, storage, reactor, server hall, fabrication,
+foundry, transfer, combat, hydroponics, laboratory, medical, crew quarters, mess
+hall, security, armory, archives, power station, coolant exchange, maintenance,
+freight depot, control room, ventilation, training course and checkpoint. Equipment
+is built for each purpose, including bunks, growing trays, medical beds, weapon
+racks, conveyors and monitoring consoles. Six independent spatial grammars compose
+open halls, partitioned suites, galleries, machine bays, diagonal corners and
+colonnades. Ceiling heights range from 6.5 to 11 meters, limited by deck clearance.
+Furniture variation is seeded separately per cell. There are no spheres or
+cylinders in generated architecture. `RoomPalette` reuses existing materials and
+interior area lights provide illumination.
 
 Tune `WorldSeed`, `ChunkSize`, `LayerHeight`, `LoadRadius`, `LoadAbove`, `LoadBelow`
 and `ChunksPerUpdate` on `ADemoProceduralEnvironment`. Cells regenerate from their
@@ -54,8 +69,19 @@ mode's `bInfiniteEnvironment=false` or pass `-DemoFiniteRange` to use the retain
 legacy facility; its location-specific presentation tests explicitly do so.
 
 `Demo.Gameplay.Environment.*` covers deck addressing, deterministic regeneration,
-stair alignment, floor openings, walkable ramp angles and bounded box modules.
+stair alignment, floor openings, walkable ramp angles, bounded box modules,
+reciprocal graph edges, connected districts, branches/loops, coherent multi-cell
+chambers, descent-sign routing and player clearance to every doorway.
 Compilation alone does not execute those tests or verify the rendered interior.
+
+The opt-in `-DemoEnvironmentTest` game argument runs a separate rendered traversal
+check in the generated world: six room captures, floor/ceiling traces, three
+physical doorway crossings and the complete switchback to the next deck. Run it
+with `UnrealEditor-Cmd.exe`, the project/map, `-game -RenderOffscreen -unattended`
+and `-DemoEnvironmentTest`. Screenshots and `report.txt` are written beneath
+`Saved/Automation/EnvironmentPlay`; the process exits with a failure code if a
+check fails. The room palette assets have persisted instanced-mesh shader usage;
+`prepare_environment_materials.py` repairs older palettes without recreating maps.
 
 ## Controls
 
@@ -73,8 +99,8 @@ Compilation alone does not execute those tests or verify the rendered interior.
 | Aim down the physical sight (hold) | Right mouse | Left trigger |
 | Fire (automatic) | Left mouse | Right trigger |
 | Reload | R | X / Square |
-| Refill ammo and reset targets/statistics | E | — |
-| Start/restart 60-second drill | T | — |
+| Refill ammo and reset targets/statistics | E | â€” |
+| Start/restart 60-second drill | T | â€” |
 
 ## Grapple
 
@@ -84,7 +110,7 @@ anchors get reticle brackets and a distance/readiness indicator. The initial
 defaults are a 28-meter range, 19 m/s winch speed and a five-second cooldown.
 These are project tuning values, not a claim of matching Apex's internal values.
 
-The winch engages with a 4.5 m/s inward impulse, accelerates at up to 120 m/s�,
+The winch engages with a 4.5 m/s inward impulse, accelerates at up to 120 m/s²,
 and compensates for gravity along the pull direction. Its speed envelope is
 32 m/s. The retracting rope preserves tangential velocity. WASD steers in the rope's
 tangent plane; looking and holding forward also permits vertical swing control.

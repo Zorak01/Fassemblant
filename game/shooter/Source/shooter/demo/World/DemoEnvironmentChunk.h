@@ -24,4 +24,5 @@ private:
     UPROPERTY() TArray<TObjectPtr<class UStaticMeshComponent>> ConnectionSeals;
     UPROPERTY() TArray<TObjectPtr<class UTextRenderComponent>> Signs;
     UPROPERTY() TArray<TObjectPtr<class ADemoTarget>> Targets;
+    uint8 ConnectionMask = 0;
 };
